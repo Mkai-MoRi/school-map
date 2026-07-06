@@ -1,0 +1,1104 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ISOMETRIC MAP BUILDER</title>
+<style>
+  :root{
+    --navy:#23214A;
+    --navy-deep:#1B1938;
+    --cream:#F3ECCF;
+    --coral:#E96A80;
+    --lav:#A9A7D6;
+    --line:#413E6E;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background-color:var(--navy);
+    background-image:
+      radial-gradient(circle, rgba(243,236,207,.45) 1px, transparent 1.6px),
+      radial-gradient(circle, rgba(233,106,128,.35) 1px, transparent 1.6px),
+      radial-gradient(circle, rgba(169,167,214,.30) 1px, transparent 1.6px);
+    background-size:210px 180px, 300px 260px, 170px 240px;
+    background-position:0 0, 110px 70px, 60px 140px;
+    color:var(--cream);
+    font-family:"Helvetica Neue", Helvetica, Arial, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+  }
+  /* film grain */
+  body::after{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:2000;
+    opacity:.16;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='240' height='240' filter='url(%23n)'/></svg>");
+  }
+  header.app{
+    display:flex;align-items:flex-end;justify-content:space-between;gap:16px;
+    padding:30px 26px 12px;text-align:center;flex-direction:column;align-items:center;
+  }
+  h1.logo{
+    margin:0;font-size:58px;line-height:.95;letter-spacing:.06em;
+    font-weight:900;text-transform:uppercase;outline:none;
+    background:repeating-linear-gradient(180deg, var(--coral) 0 .13em, var(--cream) .13em .19em);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    caret-color:var(--cream);
+    filter:drop-shadow(0 3px 0 rgba(0,0,0,.35));
+  }
+  h1.logo:focus{border-bottom:3px solid var(--coral)}
+  .sub{
+    font-size:12px;color:var(--lav);margin:10px 0 0;letter-spacing:.3em;text-transform:uppercase;
+    display:flex;align-items:center;gap:10px;
+  }
+  .sub::before,.sub::after{content:"";width:36px;height:2px;background:var(--coral);border-radius:2px}
+
+  /* ---------- toolbar ---------- */
+  .toolbar{
+    position:sticky;top:0;z-index:50;
+    display:flex;flex-wrap:wrap;align-items:center;gap:10px;
+    padding:10px 26px;border-top:4px solid var(--coral);border-bottom:1px solid var(--line);
+    background:rgba(27,25,56,.96);
+  }
+  .tb-group{display:flex;align-items:center;gap:6px}
+  .tb-label{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--lav);margin-right:2px}
+  button.tool, button.act{
+    appearance:none;border:1.5px solid var(--cream);background:transparent;color:var(--cream);
+    font:inherit;font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer;border-radius:999px;
+  }
+  button.tool[aria-pressed="true"]{background:var(--coral);border-color:var(--coral);color:var(--navy-deep)}
+  button.act:hover, button.tool:hover{background:var(--cream);color:var(--navy-deep)}
+  button:focus-visible{outline:3px solid var(--coral);outline-offset:2px}
+  .swatch{
+    width:24px;height:24px;border-radius:50%;border:1.5px solid rgba(243,236,207,.55);cursor:pointer;padding:0;
+  }
+  .swatch[aria-pressed="true"]{outline:3px solid var(--coral);outline-offset:2px}
+  .mini{
+    appearance:none;border:1.5px solid var(--line);background:transparent;color:var(--lav);
+    font:inherit;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;cursor:pointer;
+  }
+  .mini[aria-pressed="true"]{background:var(--cream);border-color:var(--cream);color:var(--navy-deep)}
+  .mini:hover{border-color:var(--cream);color:var(--cream)}
+  .mini.icon{padding:2px 6px;line-height:0}
+  .mini.icon svg{display:block}
+  .mini.icon[aria-pressed="true"]{background:rgba(243,236,207,.22);border-color:var(--cream)}
+  label.chk{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;cursor:pointer;color:var(--cream)}
+  .spacer{flex:1}
+  input[type="range"]{accent-color:var(--coral);width:104px;cursor:pointer}
+  .tb-val{font-size:11px;font-weight:700;color:var(--cream);min-width:38px;display:inline-block;font-variant-numeric:tabular-nums}
+
+  /* ---------- floors ---------- */
+  main{padding:8px 26px 60px;max-width:1200px;margin:0 auto}
+  .floor-row{
+    display:grid;grid-template-columns:1fr 280px;gap:24px;
+    padding:30px 0 14px;border-bottom:1px dashed var(--line);
+  }
+  .map-wrap{position:relative;min-width:0}
+  .map-wrap svg{width:100%;height:auto;display:block;touch-action:none;cursor:crosshair}
+  .float-editor{
+    position:absolute;z-index:20;display:flex;align-items:center;gap:5px;
+    padding:5px 7px;border:2px solid var(--coral);background:var(--cream);border-radius:999px;
+    box-shadow:0 4px 14px rgba(0,0,0,.45);
+  }
+  .float-editor input{
+    border:none;background:transparent;color:var(--navy-deep);font:inherit;font-size:12px;
+    font-weight:700;width:120px;outline:none;
+  }
+  .float-editor button{
+    border:none;background:var(--navy);color:var(--cream);font-size:11px;font-weight:700;
+    padding:4px 10px;border-radius:999px;cursor:pointer;font-family:inherit;white-space:nowrap;
+  }
+  .float-editor button:hover{background:var(--coral);color:var(--navy-deep)}
+  .float-editor button.del{background:#D6455D;color:var(--cream)}
+  .float-editor button.del:hover{background:#B32F46;color:var(--cream)}
+
+  .panel{display:flex;flex-direction:column;gap:10px}
+  .panel-rule{height:18px;background:var(--coral);border-radius:999px;position:relative}
+  .panel-rule::before,.panel-rule::after{
+    content:"";position:absolute;top:50%;width:6px;height:6px;border-radius:50%;
+    background:var(--navy);transform:translateY(-50%);
+  }
+  .panel-rule::before{left:9px}
+  .panel-rule::after{right:9px}
+  .panel-head{display:flex;gap:14px;align-items:flex-start}
+  input.floor-num{
+    width:74px;border:none;background:transparent;font-weight:900;font-size:48px;line-height:1;
+    font-family:inherit;color:var(--coral);padding:0;outline:none;
+    text-shadow:0 3px 0 rgba(0,0,0,.35);
+  }
+  input.floor-num:focus{border-bottom:3px solid var(--coral)}
+  .panel-texts{flex:1;display:flex;flex-direction:column;gap:6px;padding-top:6px}
+  input.floor-title{
+    border:none;background:transparent;font-weight:800;font-size:15px;letter-spacing:.08em;
+    text-transform:uppercase;font-family:inherit;color:var(--cream);outline:none;width:100%;
+  }
+  textarea.floor-desc{
+    border:none;background:transparent;font-size:12px;line-height:1.7;color:var(--lav);
+    font-family:inherit;resize:vertical;min-height:64px;outline:none;width:100%;
+  }
+  input.floor-title:focus, textarea.floor-desc:focus{background:rgba(243,236,207,.08);border-radius:4px}
+  .panel-btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}
+  .panel-btns button{
+    border:1px solid var(--line);background:transparent;font-size:11px;padding:4px 10px;cursor:pointer;
+    color:var(--lav);border-radius:999px;font-family:inherit;
+  }
+  .panel-btns button:hover{border-color:var(--coral);color:var(--coral)}
+
+  .add-floor{
+    margin:26px 0;width:100%;border:2px dashed #55527F;background:transparent;padding:16px;
+    font:inherit;font-weight:800;font-size:13px;letter-spacing:.18em;cursor:pointer;color:var(--lav);
+    border-radius:999px;
+  }
+  .add-floor:hover{border-color:var(--coral);color:var(--coral)}
+
+  footer{padding:0 26px 40px;font-size:11px;color:#7F7CAB;max-width:1200px;margin:0 auto;line-height:1.8}
+
+  @media (max-width:760px){
+    .floor-row{grid-template-columns:1fr}
+    h1.logo{font-size:38px}
+  }
+  @media (prefers-reduced-motion:no-preference){
+    button.tool, button.act, .panel-btns button{transition:background .12s,color .12s,border-color .12s}
+  }
+</style>
+</head>
+<body>
+
+<header class="app">
+  <div>
+    <h1 class="logo" id="mapTitle" contenteditable="true" spellcheck="false">学校MAP</h1>
+    <p class="sub">ISOMETRIC FLOOR MAP</p>
+  </div>
+</header>
+
+<div class="toolbar" role="toolbar" aria-label="編集ツール">
+  <div class="tb-group" id="toolGroup">
+    <span class="tb-label">ツール</span>
+    <button class="tool" data-tool="floor"  aria-pressed="true">床</button>
+    <button class="tool" data-tool="block"  aria-pressed="false">ブロック</button>
+    <button class="tool" data-tool="roof"   aria-pressed="false">屋根</button>
+    <button class="tool" data-tool="stamp"  aria-pressed="false">スタンプ</button>
+    <button class="tool" data-tool="erase"  aria-pressed="false">消す</button>
+    <button class="tool" data-tool="label"  aria-pressed="false">ラベル</button>
+  </div>
+  <div class="tb-group" id="heightGroup">
+    <span class="tb-label">高さ</span>
+    <button class="mini" data-h="low"   aria-pressed="false">低</button>
+    <button class="mini" data-h="block" aria-pressed="true">中</button>
+    <button class="mini" data-h="high"  aria-pressed="false">高</button>
+  </div>
+  <div class="tb-group" id="stampGroup">
+    <span class="tb-label">種類</span>
+  </div>
+  <div class="tb-group" id="pickGroup">
+    <span class="tb-label">選択</span>
+    <button class="mini" data-p="surface" aria-pressed="true"  title="カーソルが触れている面(上面・屋根・壁)を選択">面</button>
+    <button class="mini" data-p="ground"  aria-pressed="false" title="地面グリッド基準で選択 — 高いブロックの陰に隠れたマスも狙えます(Shiftキーで一時切替)">地面</button>
+  </div>
+  <div class="tb-group" id="paletteGroup"><span class="tb-label">色</span></div>
+  <label class="chk"><input type="checkbox" id="gridToggle" checked> グリッド</label>
+  <div class="tb-group" aria-label="視点">
+    <span class="tb-label">回転</span>
+    <input type="range" id="angleRange" min="0" max="360" step="1" value="45" aria-label="回転角度">
+    <span class="tb-val" id="angleVal">45°</span>
+    <span class="tb-label">傾き</span>
+    <input type="range" id="tiltRange" min="15" max="90" step="1" value="50" aria-label="傾き">
+    <span class="tb-val" id="tiltVal">50%</span>
+    <button class="act" id="viewReset">視点リセット</button>
+  </div>
+  <div class="tb-group" aria-label="ライティング">
+    <span class="tb-label">陰影</span>
+    <input type="range" id="shadeRange" min="0" max="100" step="1" value="50" aria-label="壁の陰影の強さ">
+    <span class="tb-label">影</span>
+    <input type="range" id="shadowRange" min="0" max="70" step="1" value="25" aria-label="落ち影の濃さ">
+  </div>
+  <div class="spacer"></div>
+  <div class="tb-group">
+    <button class="act" id="undoBtn" title="Ctrl+Z">元に戻す</button>
+    <button class="act" id="pngBtn">PNG書き出し</button>
+    <button class="act" id="saveBtn">保存(JSON)</button>
+    <button class="act" id="loadBtn">読み込み</button>
+    <input type="file" id="fileInput" accept=".json" hidden>
+  </div>
+</div>
+
+<main id="floors"></main>
+
+<div style="max-width:1200px;margin:0 auto;padding:0 26px">
+  <button class="add-floor" id="addFloor">＋ フロアを追加</button>
+</div>
+
+<footer>
+  使い方 — 通常はカーソルが触れている面(ブロックの上面・屋根・壁)が操作対象になり、点線のハイライトで対象マスが表示されます。高いブロックの陰に隠れたマスを操作したいときは、選択を「地面」に切り替えるか、Shiftキーを押しながら操作すると地面グリッド基準の選択になります(ハイライトは最前面に表示されるので、隠れたマスでも選択位置が見えます)。「床」は平らなタイル、「ブロック」は立ち上がった壁・部屋を描きます。「ラベル」でマスをクリックすると部屋名を付けられ、既存のラベルはどのツール中でもクリックすればその場で編集・削除できます。「陰影」「影」スライダーで壁の濃淡と落ち影を調整できます。ブロックは「高さ」で低・中・高を選べ、「屋根」でとんがり屋根のオン/オフ、「スタンプ」で木・人・矢印・旗・立入禁止×・ロープ・通行止めを配置できます(同じ種類をもう一度置くと削除)。ラベルは編集時に「タグ/ピン」で見た目を切り替えられます。
+  各フロア右側の番号・タイトル・説明はそのまま編集できます。ツールバーの「回転」「傾き」スライダーで、図をどの角度・高さからでも眺められます(PNG書き出しにも反映)。作品は「保存(JSON)」でファイルに保存し、あとで「読み込み」で再開できます。
+</footer>
+
+<script>
+"use strict";
+/* ================= constants ================= */
+const COLS = 28, ROWS = 24;
+const T = 20;                      // tile size (world units)
+const SLAB = 6;                    // floor slab thickness
+const H_OF = {floor:0, low:12, block:22, high:34};   // cell heights
+const ROOF_H = 14;                 // pyramid roof height
+const TOP_ROOM = 48;               // headroom in the viewBox (high block + roof)
+const PAD = 52;
+const BASE_H = 16;                 // island base slab thickness
+let viewAngle = 45;                // rotation around the map (degrees)
+let viewTilt  = 0.5;               // camera tilt: 0.15 (flat) – 0.9 (top-down)
+let shadeAmt  = 50;                // wall shading contrast (0–100)
+let shadowAmt = 25;                // cast-shadow opacity (0–70)
+
+const PALETTE = [
+  ["#F4ECC9","クリーム(部屋)"], ["#FAF3DC","ライト(廊下)"], ["#E96A80","コーラル(階段)"],
+  ["#F0A3B0","ピンク(女WC)"], ["#8B8FD0","ペリウィンクル(男WC)"], ["#4C4E90","ディープブルー(体育館)"],
+  ["#2E2C5C","ネイビー"], ["#D9C87F","カーキ(屋外)"], ["#C94F63","レッド(立入禁止)"],
+  ["#A9ADDF","ライトブルー"], ["#E9B45B","ゴールド"], ["#FBF6E3","ホワイト"]
+];
+
+/* ================= state ================= */
+let floors = [];          // [{id,num,title,desc,cells:{ "c,r":{color,kind} }, labels:[{c,r,text}]}]
+let currentTool = "floor";
+let blockHeight = "block";        // low | block | high
+let stampType   = "tree";         // tree | person | arrow | flag
+let pickMode    = "surface";      // surface: 触れている面 / ground: 地面グリッド
+let currentColor = PALETTE[0][0];
+let showGrid = true;
+let undoStack = [];
+let uid = 1;
+
+/* ================= helpers ================= */
+const key = (c,r)=>c+","+r;
+function shade(hex,f){
+  // blend toward the deep-navy shadow tone (f=1 keeps the color) for a unified palette
+  const t = Math.min(1, Math.max(0, 1-f));
+  const n = parseInt(hex.slice(1),16);
+  const S = [0x1B,0x19,0x38];  // --navy-deep
+  const ch = i=>Math.round(((n>>(16-8*i))&255)*(1-t) + S[i]*t);
+  return "#"+((1<<24)+(ch(0)<<16)+(ch(1)<<8)+ch(2)).toString(16).slice(1);
+}
+function viewMetrics(){
+  const rad = viewAngle*Math.PI/180, cos = Math.cos(rad), sin = Math.sin(rad);
+  const pts = [[0,0],[COLS,0],[0,ROWS],[COLS,ROWS]].map(([c,r])=>{
+    const x=c*T, y=r*T;
+    return [x*cos - y*sin, (x*sin + y*cos)*viewTilt];
+  });
+  const xs = pts.map(p=>p[0]), ys = pts.map(p=>p[1]);
+  const minX=Math.min(...xs), maxX=Math.max(...xs);
+  const minY=Math.min(...ys), maxY=Math.max(...ys);
+  return {
+    cos, sin,
+    ox: PAD - minX,
+    oy: PAD + TOP_ROOM - minY,
+    w:  maxX - minX + PAD*2,
+    h:  maxY - minY + PAD*2 + TOP_ROOM + SLAB + BASE_H
+  };
+}
+let VM = viewMetrics();
+const px = (c,r)=>VM.ox + (c*T*VM.cos - r*T*VM.sin);
+const py = (c,r)=>VM.oy + (c*T*VM.sin + r*T*VM.cos)*viewTilt;
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+
+/* ================= stamp glyphs ================= */
+function stampSVG(type, x, y){
+  const NV="#2E2C5C", CR="#E96A80", PW="#4C4E90", LB="#8B8FD0", CM="#F4ECC9",
+        RD="#C94F63", GD="#E9B45B", SH="#191735";
+  const gnd = `<ellipse cx="${x}" cy="${y}" rx="6.5" ry="2.6" fill="${SH}" opacity="0.32"/>`;
+  switch(type){
+    case "tree": return `<g>${gnd}`
+      + `<polygon points="${x},${y-24} ${x-7},${y-1} ${x+7},${y-1}" fill="${PW}" stroke="${CM}" stroke-width="1.2" stroke-linejoin="round"/>`
+      + `<polygon points="${x},${y-26} ${x-4.6},${y-12} ${x+4.6},${y-12}" fill="${LB}" stroke="${CM}" stroke-width="1" stroke-linejoin="round"/></g>`;
+    case "person": return `<g>${gnd}`
+      + `<circle cx="${x}" cy="${y-16}" r="3.4" fill="${NV}" stroke="${CM}" stroke-width="1.2"/>`
+      + `<path d="M ${x-4},${y} C ${x-4},${y-12} ${x+4},${y-12} ${x+4},${y} Z" fill="${NV}" stroke="${CM}" stroke-width="1.2" stroke-linejoin="round"/></g>`;
+    case "arrow": return `<g>`
+      + `<line x1="${x}" y1="${y-24}" x2="${x}" y2="${y-10}" stroke="${SH}" stroke-width="6" stroke-linecap="round"/>`
+      + `<polygon points="${x-7},${y-11} ${x+7},${y-11} ${x},${y}" fill="${SH}"/>`
+      + `<line x1="${x}" y1="${y-23}" x2="${x}" y2="${y-10}" stroke="${CR}" stroke-width="3.4" stroke-linecap="round"/>`
+      + `<polygon points="${x-5.2},${y-11} ${x+5.2},${y-11} ${x},${y-2}" fill="${CR}"/></g>`;
+    case "flag": return `<g>${gnd}`
+      + `<line x1="${x-3}" y1="${y}" x2="${x-3}" y2="${y-25}" stroke="${CM}" stroke-width="2" stroke-linecap="round"/>`
+      + `<polygon points="${x-3},${y-25} ${x+11},${y-20.5} ${x-3},${y-16}" fill="${CR}" stroke="${CM}" stroke-width="1.1" stroke-linejoin="round"/></g>`;
+    case "cross": return `<g>${gnd}`
+      + `<g stroke="${CM}" stroke-width="6.5" stroke-linecap="round">`
+      + `<line x1="${x-7}" y1="${y-19}" x2="${x+7}" y2="${y-5}"/><line x1="${x+7}" y1="${y-19}" x2="${x-7}" y2="${y-5}"/></g>`
+      + `<g stroke="${RD}" stroke-width="4" stroke-linecap="round">`
+      + `<line x1="${x-7}" y1="${y-19}" x2="${x+7}" y2="${y-5}"/><line x1="${x+7}" y1="${y-19}" x2="${x-7}" y2="${y-5}"/></g></g>`;
+    case "rope": return `<g>`
+      + `<ellipse cx="${x-10}" cy="${y}" rx="3" ry="1.4" fill="${SH}" opacity="0.32"/>`
+      + `<ellipse cx="${x+10}" cy="${y}" rx="3" ry="1.4" fill="${SH}" opacity="0.32"/>`
+      + `<line x1="${x-10}" y1="${y}" x2="${x-10}" y2="${y-14}" stroke="${CM}" stroke-width="2.2" stroke-linecap="round"/>`
+      + `<line x1="${x+10}" y1="${y}" x2="${x+10}" y2="${y-14}" stroke="${CM}" stroke-width="2.2" stroke-linecap="round"/>`
+      + `<circle cx="${x-10}" cy="${y-15}" r="1.8" fill="${CR}"/>`
+      + `<circle cx="${x+10}" cy="${y-15}" r="1.8" fill="${CR}"/>`
+      + `<path d="M ${x-10},${y-13} Q ${x},${y-6} ${x+10},${y-13}" fill="none" stroke="${SH}" stroke-width="3.6" stroke-linecap="round"/>`
+      + `<path d="M ${x-10},${y-13} Q ${x},${y-6} ${x+10},${y-13}" fill="none" stroke="${GD}" stroke-width="2.2" stroke-dasharray="3.5 3" stroke-linecap="round"/></g>`;
+    case "noentry": return `<g>${gnd}`
+      + `<line x1="${x}" y1="${y}" x2="${x}" y2="${y-9}" stroke="${CM}" stroke-width="1.8"/>`
+      + `<circle cx="${x}" cy="${y-16}" r="7.5" fill="${RD}" stroke="${CM}" stroke-width="1.6"/>`
+      + `<rect x="${x-4.6}" y="${y-17.4}" width="9.2" height="2.8" rx="1.4" fill="${CM}"/></g>`;
+  }
+  return "";
+}
+
+/* ================= rendering helpers ================= */
+// deterministic hand-drawn jitter
+function wob(x,y,s){ const h = Math.sin(x*127.1 + y*311.7 + s*74.7)*43758.5453; return (h - Math.floor(h))*2 - 1; }
+
+// chain unit boundary edges into closed loops
+function chainLoops(edges){
+  const map = new Map();
+  for(const e of edges){
+    const k = e.f[0]+","+e.f[1];
+    if(!map.has(k)) map.set(k, []);
+    map.get(k).push(e);
+  }
+  const loops = [];
+  for(const e0 of edges){
+    if(e0.used) continue;
+    const loop = []; let cur = e0;
+    while(cur && !cur.used){
+      cur.used = true; loop.push(cur.f);
+      const k = cur.t[0]+","+cur.t[1];
+      cur = (map.get(k)||[]).find(x=>!x.used);
+    }
+    if(loop.length >= 4) loops.push(loop);
+  }
+  return loops;
+}
+
+// closed polygon path with rounded corners
+function roundedPath(pts, radius){
+  const n = pts.length; let d = "";
+  for(let i=0;i<n;i++){
+    const p0 = pts[(i+n-1)%n], p1 = pts[i], p2 = pts[(i+1)%n];
+    const v1 = [p1[0]-p0[0], p1[1]-p0[1]], v2 = [p2[0]-p1[0], p2[1]-p1[1]];
+    const l1 = Math.hypot(v1[0],v1[1])||1, l2 = Math.hypot(v2[0],v2[1])||1;
+    const r1 = Math.min(radius,l1/2), r2 = Math.min(radius,l2/2);
+    const a = [p1[0]-v1[0]/l1*r1, p1[1]-v1[1]/l1*r1];
+    const b = [p1[0]+v2[0]/l2*r2, p1[1]+v2[1]/l2*r2];
+    d += (i?"L":"M")+a[0].toFixed(1)+","+a[1].toFixed(1)
+       + " Q"+p1[0].toFixed(1)+","+p1[1].toFixed(1)
+       + " "+b[0].toFixed(1)+","+b[1].toFixed(1)+" ";
+  }
+  return d+"Z";
+}
+
+// grid-corner loop -> wobbly rounded screen path at a given height
+function loopPathAt(loop, topZ, seed){
+  const pts = loop.map(([gx,gy])=>[
+    px(gx,gy) + wob(gx,gy,seed)*0.9,
+    py(gx,gy) - topZ + wob(gy,gx,seed+7)*0.9
+  ]);
+  return roundedPath(pts, 3.5);
+}
+
+/* ================= rendering ================= */
+function renderFloorSVG(f){
+  VM = viewMetrics();
+  const {cos, sin} = VM;
+  const seed = f.id;
+  let out = "";
+
+  // hatch pattern for shaded faces (screen-print texture)
+  out += `<defs><pattern id="hatch-${f.id}" width="5" height="5" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">`
+       + `<line x1="0" y1="0" x2="0" y2="5" stroke="#17152F" stroke-width="1.1"/></pattern></defs>`;
+
+  if(showGrid){
+    let g = '<g stroke="#454379" stroke-width="0.6" fill="none">';
+    for(let c=0;c<=COLS;c++) g += `<line x1="${px(c,0)}" y1="${py(c,0)}" x2="${px(c,ROWS)}" y2="${py(c,ROWS)}"/>`;
+    for(let r=0;r<=ROWS;r++) g += `<line x1="${px(0,r)}" y1="${py(0,r)}" x2="${px(COLS,r)}" y2="${py(COLS,r)}"/>`;
+    out += g + "</g>";
+  }
+
+  // decorative waves floating around the island
+  const wavePos = [[.05,.16],[.2,.05],[.55,.03],[.85,.07],[.95,.32],[.93,.68],[.7,.94],[.35,.96],[.05,.8],[.03,.45]];
+  out += '<g stroke="#8B8FD0" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.4">';
+  wavePos.forEach(([fx,fy],i)=>{
+    const wx = fx*VM.w, wy = fy*VM.h, s = 0.8 + (i%3)*0.25;
+    out += `<path d="M${wx},${wy} q ${5*s},${-4*s} ${10*s},0 q ${5*s},${4*s} ${10*s},0"/>`;
+  });
+  out += '</g>';
+
+  const cells = Object.keys(f.cells).map(k=>{
+    const [c,r]=k.split(",").map(Number); return {c,r,...f.cells[k]};
+  }).sort((a,b)=>py(a.c+0.5,a.r+0.5)-py(b.c+0.5,b.r+0.5));   // back-to-front
+
+  const q = shadeAmt/50;
+  const darkF = Math.max(0.22, 1-0.32*q), midF = Math.max(0.34, 1-0.16*q);
+  const sf = dx => dx < -1e-9 ? darkF : dx > 1e-9 ? midF : (darkF+midF)/2;
+  const hatchOp = (0.1 + 0.3*shadeAmt/100).toFixed(2);
+  const topZAt = (cc,rr)=>{ const n=f.cells[key(cc,rr)]; return n ? (H_OF[n.kind]||0) : -1; };
+
+  // ---- island base: ground slab extending one cell around everything ----
+  if(cells.length){
+    const bTop = "#3B3869";
+    const baseSet = new Set();
+    for(const cell of cells)
+      for(let dc=-1;dc<=1;dc++)for(let dr=-1;dr<=1;dr++) baseSet.add((cell.c+dc)+","+(cell.r+dr));
+    const hasBase = (cc,rr)=>baseSet.has(cc+","+rr);
+    const baseCells = [...baseSet].map(k=>k.split(",").map(Number))
+      .sort((a,b)=>py(a[0]+0.5,a[1]+0.5)-py(b[0]+0.5,b[1]+0.5));
+    const baseEdges = [];
+    for(const [c,r] of baseCells){
+      const P = (cc,rr)=>[px(cc,rr), py(cc,rr)];
+      const A=P(c,r), B=P(c+1,r), C=P(c+1,r+1), D=P(c,r+1);
+      const bface = (p1,p2,fct)=>{
+        const col = shade(bTop,fct);
+        const ptsStr = `${p1[0]},${p1[1]} ${p2[0]},${p2[1]} ${p2[0]},${p2[1]+BASE_H} ${p1[0]},${p1[1]+BASE_H}`;
+        let s = `<polygon points="${ptsStr}" fill="${col}" stroke="${col}" stroke-width="0.6"/>`;
+        if(fct<=darkF+1e-9) s += `<polygon points="${ptsStr}" fill="url(#hatch-${f.id})" opacity="${hatchOp}"/>`;
+        return s;
+      };
+      if(cos >  1e-9 && !hasBase(c,r+1)) out += bface(D,C, sf(-sin));
+      if(cos < -1e-9 && !hasBase(c,r-1)) out += bface(A,B, sf( sin));
+      if(sin >  1e-9 && !hasBase(c+1,r)) out += bface(B,C, sf( cos));
+      if(sin < -1e-9 && !hasBase(c-1,r)) out += bface(A,D, sf(-cos));
+      out += `<polygon points="${A[0]},${A[1]} ${B[0]},${B[1]} ${C[0]},${C[1]} ${D[0]},${D[1]}" fill="${bTop}" stroke="${bTop}" stroke-width="0.7"/>`;
+      if(!hasBase(c,r-1)) baseEdges.push({f:[c,r],     t:[c+1,r]});
+      if(!hasBase(c+1,r)) baseEdges.push({f:[c+1,r],   t:[c+1,r+1]});
+      if(!hasBase(c,r+1)) baseEdges.push({f:[c+1,r+1], t:[c,r+1]});
+      if(!hasBase(c-1,r)) baseEdges.push({f:[c,r+1],   t:[c,r]});
+    }
+    for(const loop of chainLoops(baseEdges))
+      out += `<path d="${loopPathAt(loop,0,seed+3)}" fill="none" stroke="#191735" stroke-width="1.3" stroke-linejoin="round" opacity="0.9"/>`;
+  }
+
+  // ---- soft cast shadows on the base (one merged path so overlaps stay even) ----
+  if(shadowAmt>0){
+    const L = 10 + 8*(1-viewTilt);
+    let d = "";
+    for(const cell of cells){
+      if(!(H_OF[cell.kind]>0)) continue;
+      const {c,r} = cell;
+      const s = 0.55 + 0.45*(H_OF[cell.kind]/34);   // taller casts a longer shadow
+      const g = (cc,rr)=>`${px(cc,rr)+L*s},${py(cc,rr)+L*s*0.45}`;
+      d += `M${g(c,r)} L${g(c+1,r)} L${g(c+1,r+1)} L${g(c,r+1)} Z `;
+    }
+    if(d) out += `<path d="${d}" fill="#0E0D22" opacity="${(shadowAmt/100).toFixed(2)}"/>`;
+  }
+
+  // ---- rooms: seamless fills, hatched dark walls, outline edges collected per region ----
+  const edgeGroups = new Map();
+  for(const cell of cells){
+    const {c,r,color,kind} = cell;
+    const topZ = H_OF[kind]||0;
+    const depth = topZ + SLAB;
+    const P = (cc,rr)=>[px(cc,rr), py(cc,rr)-topZ];
+    const A=P(c,r), B=P(c+1,r), C=P(c+1,r+1), D=P(c,r+1);
+    const face = (p1,p2,fct)=>{
+      const col = shade(color,fct);
+      const ptsStr = `${p1[0]},${p1[1]} ${p2[0]},${p2[1]} ${p2[0]},${p2[1]+depth} ${p1[0]},${p1[1]+depth}`;
+      let s = `<polygon points="${ptsStr}" fill="${col}" stroke="${col}" stroke-width="0.6"/>`;
+      if(fct<=darkF+1e-9) s += `<polygon points="${ptsStr}" fill="url(#hatch-${f.id})" opacity="${hatchOp}"/>`;
+      return s;
+    };
+    if(cos >  1e-9 && topZAt(c,r+1) < topZ) out += face(D, C, sf(-sin));
+    if(cos < -1e-9 && topZAt(c,r-1) < topZ) out += face(A, B, sf( sin));
+    if(sin >  1e-9 && topZAt(c+1,r) < topZ) out += face(B, C, sf( cos));
+    if(sin < -1e-9 && topZAt(c-1,r) < topZ) out += face(A, D, sf(-cos));
+    out += `<polygon points="${A[0]},${A[1]} ${B[0]},${B[1]} ${C[0]},${C[1]} ${D[0]},${D[1]}" fill="${color}" stroke="${color}" stroke-width="0.7"/>`;
+    if(cell.roof && topZ>0){
+      const rc = "#E96A80";
+      const apex = [px(c+0.5,r+0.5), py(c+0.5,r+0.5)-topZ-ROOF_H];
+      const tris = [[A,B,sin],[B,C,cos],[C,D,-sin],[D,A,-cos]];
+      tris.sort((t1,t2)=>(t1[0][1]+t1[1][1])-(t2[0][1]+t2[1][1]));   // far faces first
+      for(const [p1,p2,dx] of tris){
+        const col = shade(rc, sf(dx)*0.35+0.65);
+        out += `<polygon points="${p1[0]},${p1[1]} ${p2[0]},${p2[1]} ${apex[0].toFixed(1)},${apex[1].toFixed(1)}" fill="${col}" stroke="${shade(rc,0.5)}" stroke-width="0.8" stroke-linejoin="round"/>`;
+      }
+    }
+
+    const boundary = (cc,rr)=>{ const n=f.cells[key(cc,rr)]; return !n || n.color!==color || n.kind!==kind; };
+    const gk = color+"|"+kind;
+    let grp = edgeGroups.get(gk);
+    if(!grp){ grp = {edges:[], topZ, color}; edgeGroups.set(gk, grp); }
+    if(boundary(c,r-1)) grp.edges.push({f:[c,r],     t:[c+1,r]});
+    if(boundary(c+1,r)) grp.edges.push({f:[c+1,r],   t:[c+1,r+1]});
+    if(boundary(c,r+1)) grp.edges.push({f:[c+1,r+1], t:[c,r+1]});
+    if(boundary(c-1,r)) grp.edges.push({f:[c,r+1],   t:[c,r]});
+  }
+  // hand-drawn region outlines (rounded corners + slight wobble)
+  for(const grp of edgeGroups.values()){
+    const oc = shade(grp.color, 0.5);
+    for(const loop of chainLoops(grp.edges))
+      out += `<path d="${loopPathAt(loop, grp.topZ, seed)}" fill="none" stroke="${oc}" stroke-width="1.2" stroke-linejoin="round" opacity="0.85"/>`;
+  }
+
+  // stamps (pictograms) — anchored on top of whatever is under them
+  const stamps = (f.stamps||[]).slice().sort((a,b)=>py(a.c,a.r)-py(b.c,b.r));
+  for(const st of stamps){
+    const tz = Math.max(0, topZAt(st.c, st.r));
+    out += stampSVG(st.type, px(st.c+0.5, st.r+0.5), py(st.c+0.5, st.r+0.5)-tz);
+  }
+
+  // labels (tag = cream pill / pin = map pin with curved leader)
+  for(const lb of f.labels){
+    const cellHere = f.cells[key(lb.c,lb.r)];
+    const tz = (cellHere ? (H_OF[cellHere.kind]||0) : 0) + (cellHere && cellHere.roof ? ROOF_H : 0);
+    const cx = px(lb.c+0.5, lb.r+0.5);
+    const cy = py(lb.c+0.5, lb.r+0.5) - tz;
+    if(lb.style==="pin"){
+      out += `<g class="lbl" data-c="${lb.c}" data-r="${lb.r}" style="cursor:pointer">`
+           + `<ellipse cx="${cx}" cy="${cy}" rx="4.5" ry="2" fill="#191735" opacity="0.4"/>`
+           + `<polygon points="${cx},${cy-1} ${cx-4.5},${cy-15} ${cx+4.5},${cy-15}" fill="#E96A80"/>`
+           + `<circle cx="${cx}" cy="${cy-20}" r="8" fill="#E96A80" stroke="#F4ECC9" stroke-width="1.4"/>`
+           + `<ellipse cx="${cx-2.7}" cy="${cy-20}" rx="1.6" ry="2.7" fill="#23214A"/>`
+           + `<ellipse cx="${cx+2.7}" cy="${cy-20}" rx="1.6" ry="2.7" fill="#23214A"/>`
+           + `<path d="M ${cx+8},${cy-24} Q ${cx+17},${cy-33} ${cx+24},${cy-33}" stroke="#E96A80" stroke-width="1.3" fill="none"/>`
+           + `<text x="${cx+27}" y="${cy-30}" font-size="10.5" font-weight="800" fill="#F4ECC9" stroke="#23214A" stroke-width="3" paint-order="stroke" stroke-linejoin="round" font-family="Helvetica, Arial, sans-serif">${esc(lb.text)}</text></g>`;
+    }else{
+      const wpx = Math.max(30, [...lb.text].reduce((w,ch)=>w+(ch.charCodeAt(0)>255?11:6.2),0)+12);
+      out += `<g class="lbl" data-c="${lb.c}" data-r="${lb.r}" style="cursor:pointer"><rect x="${cx-wpx/2}" y="${cy-24}" width="${wpx}" height="15" fill="#F3ECCF" stroke="#23214A" stroke-width="1" rx="7.5"/>`
+           + `<line x1="${cx}" y1="${cy-9}" x2="${cx}" y2="${cy-2}" stroke="#F3ECCF" stroke-width="1.4"/>`
+           + `<circle cx="${cx}" cy="${cy-1}" r="1.6" fill="#F3ECCF"/>`
+           + `<text x="${cx}" y="${cy-13}" text-anchor="middle" font-size="9.5" font-weight="700" fill="#23214A" font-family="Helvetica, Arial, sans-serif">${esc(lb.text)}</text></g>`;
+    }
+  }
+  return out;
+}
+
+function redraw(f){
+  const svg = document.getElementById("svg-"+f.id);
+  if(!svg) return;
+  const m = viewMetrics();
+  svg.setAttribute("viewBox", `0 0 ${Math.ceil(m.w)} ${Math.ceil(m.h)}`);
+  svg.innerHTML = renderFloorSVG(f);
+}
+function redrawAll(){ floors.forEach(redraw); }
+
+/* ================= DOM build ================= */
+function buildFloorsDOM(){
+  const root = document.getElementById("floors");
+  root.innerHTML = "";
+  const m = viewMetrics();
+  floors.forEach((f,idx)=>{
+    const row = document.createElement("section");
+    row.className = "floor-row";
+    row.innerHTML = `
+      <div class="map-wrap" id="wrap-${f.id}">
+        <svg id="svg-${f.id}" viewBox="0 0 ${Math.ceil(m.w)} ${Math.ceil(m.h)}" xmlns="http://www.w3.org/2000/svg"
+             role="img" aria-label="フロア ${esc(f.num)} のマップ"></svg>
+      </div>
+      <div class="panel">
+        <div class="panel-rule"></div>
+        <div class="panel-head">
+          <input class="floor-num" value="${esc(f.num)}" maxlength="3" aria-label="フロア番号">
+          <div class="panel-texts">
+            <input class="floor-title" value="${esc(f.title)}" placeholder="フロア名" aria-label="フロア名">
+            <textarea class="floor-desc" placeholder="説明・展示情報など" aria-label="フロア説明">${esc(f.desc)}</textarea>
+          </div>
+        </div>
+        <div class="panel-btns">
+          <button data-act="up">↑ 上へ</button>
+          <button data-act="down">↓ 下へ</button>
+          <button data-act="dup">複製</button>
+          <button data-act="clear">クリア</button>
+          <button data-act="del">削除</button>
+        </div>
+      </div>`;
+    root.appendChild(row);
+
+    // panel bindings
+    const [numEl] = row.getElementsByClassName("floor-num");
+    const [titleEl] = row.getElementsByClassName("floor-title");
+    const [descEl] = row.getElementsByClassName("floor-desc");
+    numEl.addEventListener("input", ()=>f.num = numEl.value);
+    titleEl.addEventListener("input", ()=>f.title = titleEl.value);
+    descEl.addEventListener("input", ()=>f.desc = descEl.value);
+    row.querySelectorAll(".panel-btns button").forEach(b=>{
+      b.addEventListener("click", ()=>floorAction(f, b.dataset.act, idx));
+    });
+
+    attachPointer(f);
+    redraw(f);
+  });
+}
+
+function floorAction(f, act, idx){
+  snapshot();
+  if(act==="del"){ floors = floors.filter(x=>x!==f); }
+  else if(act==="clear"){ f.cells={}; f.labels=[]; f.stamps=[]; }
+  else if(act==="dup"){
+    const copy = JSON.parse(JSON.stringify(f)); copy.id = uid++;
+    floors.splice(idx+1,0,copy);
+  }
+  else if(act==="up" && idx>0){ [floors[idx-1],floors[idx]]=[floors[idx],floors[idx-1]]; }
+  else if(act==="down" && idx<floors.length-1){ [floors[idx+1],floors[idx]]=[floors[idx],floors[idx+1]]; }
+  buildFloorsDOM();
+}
+
+/* ================= pointer / painting ================= */
+function svgPoint(svg, evt){
+  const pt = svg.createSVGPoint();
+  pt.x = evt.clientX; pt.y = evt.clientY;
+  return pt.matrixTransform(svg.getScreenCTM().inverse());
+}
+function pointToCell(p){
+  const X = p.x - VM.ox;
+  const Y = (p.y - VM.oy)/viewTilt;
+  const x =  X*VM.cos + Y*VM.sin;
+  const y = -X*VM.sin + Y*VM.cos;
+  const c = Math.floor(x/T), r = Math.floor(y/T);
+  if(c<0||r<0||c>=COLS||r>=ROWS) return null;
+  return {c,r};
+}
+function pointInPoly(ptx, pty, poly){
+  let inside = false;
+  for(let i=0, j=poly.length-1; i<poly.length; j=i++){
+    const xi=poly[i][0], yi=poly[i][1], xj=poly[j][0], yj=poly[j][1];
+    if(((yi>pty)!==(yj>pty)) && ptx < (xj-xi)*(pty-yi)/(yj-yi)+xi) inside = !inside;
+  }
+  return inside;
+}
+// pick the cell whose visible surface (top / roof / wall) is under the cursor
+function pickCell(f, p, forceGround){
+  VM = viewMetrics();
+  if(pickMode==="ground" || forceGround) return pointToCell(p);   // 隠れたマスも地面基準で直接狙える
+  const raised = Object.keys(f.cells).map(k=>{
+    const [c,r]=k.split(",").map(Number); return {c,r,...f.cells[k]};
+  }).filter(cl=>(H_OF[cl.kind]||0)>0)
+    .sort((a,b)=>py(b.c+0.5,b.r+0.5)-py(a.c+0.5,a.r+0.5));   // front-most first
+  for(const cl of raised){
+    const {c,r} = cl, topZ = H_OF[cl.kind]||0, depth = topZ + SLAB;
+    const P = (cc,rr)=>[px(cc,rr), py(cc,rr)-topZ];
+    const A=P(c,r), B=P(c+1,r), C=P(c+1,r+1), D=P(c,r+1);
+    if(pointInPoly(p.x,p.y,[A,B,C,D])) return {c,r};                       // top face
+    if(cl.roof){                                                            // roof faces
+      const apex = [px(c+0.5,r+0.5), py(c+0.5,r+0.5)-topZ-ROOF_H];
+      if(pointInPoly(p.x,p.y,[A,B,apex]) || pointInPoly(p.x,p.y,[B,C,apex]) ||
+         pointInPoly(p.x,p.y,[C,D,apex]) || pointInPoly(p.x,p.y,[D,A,apex])) return {c,r};
+    }
+    const w = (p1,p2)=>[p1, p2, [p2[0],p2[1]+depth], [p1[0],p1[1]+depth]];  // wall faces
+    if(pointInPoly(p.x,p.y,w(A,B)) || pointInPoly(p.x,p.y,w(B,C)) ||
+       pointInPoly(p.x,p.y,w(C,D)) || pointInPoly(p.x,p.y,w(D,A))) return {c,r};
+  }
+  return pointToCell(p);   // nothing raised under the cursor -> ground plane
+}
+// dashed highlight showing exactly which cell the cursor will affect
+function updateHover(f, cell){
+  const svg = document.getElementById("svg-"+f.id);
+  if(!svg) return;
+  let h = svg.querySelector(".hover");
+  if(!cell){ if(h) h.remove(); return; }
+  const cc = f.cells[key(cell.c,cell.r)];
+  const tz = cc ? (H_OF[cc.kind]||0) : 0;
+  const pts = [[cell.c,cell.r],[cell.c+1,cell.r],[cell.c+1,cell.r+1],[cell.c,cell.r+1]]
+    .map(([x,y])=>px(x,y).toFixed(1)+","+(py(x,y)-tz).toFixed(1)).join(" ");
+  if(!h){
+    h = document.createElementNS("http://www.w3.org/2000/svg","polygon");
+    h.setAttribute("class","hover");
+    h.setAttribute("fill","rgba(243,236,207,0.16)");
+    h.setAttribute("stroke","#F3ECCF");
+    h.setAttribute("stroke-width","1.4");
+    h.setAttribute("stroke-dasharray","4 3");
+    h.setAttribute("stroke-linejoin","round");
+    h.setAttribute("pointer-events","none");
+    svg.appendChild(h);
+  }
+  h.setAttribute("points", pts);
+}
+
+function attachPointer(f){
+  const svg = document.getElementById("svg-"+f.id);
+  let painting = false, last = "";
+  const applyCell = cell=>{
+    if(!cell) return;
+    const k = key(cell.c,cell.r);
+    if(k===last) return; last = k;
+    if(currentTool==="floor")      f.cells[k] = {color:currentColor, kind:"floor"};
+    else if(currentTool==="block") f.cells[k] = {color:currentColor, kind:blockHeight};
+    else if(currentTool==="roof"){
+      const cc = f.cells[k];
+      if(cc && (H_OF[cc.kind]||0) > 0) cc.roof = !cc.roof;
+    }
+    else if(currentTool==="stamp"){
+      f.stamps = f.stamps || [];
+      const i = f.stamps.findIndex(s=>s.c===cell.c && s.r===cell.r);
+      if(i>=0 && f.stamps[i].type===stampType) f.stamps.splice(i,1);   // same type -> remove
+      else if(i>=0) f.stamps[i].type = stampType;
+      else f.stamps.push({c:cell.c, r:cell.r, type:stampType});
+    }
+    else if(currentTool==="erase"){
+      delete f.cells[k];
+      f.labels = f.labels.filter(l=>key(l.c,l.r)!==k);
+      f.stamps = (f.stamps||[]).filter(s=>key(s.c,s.r)!==k);
+    }
+    redraw(f);
+  };
+  svg.addEventListener("pointerdown", evt=>{
+    evt.preventDefault();
+    const hit = evt.target.closest ? evt.target.closest("g.lbl") : null;
+    if(hit){ openLabelInput(f, {c:+hit.dataset.c, r:+hit.dataset.r}, evt); return; }
+    const cell = pickCell(f, svgPoint(svg,evt), evt.shiftKey);
+    if(!cell) return;
+    if(currentTool==="label"){ openLabelInput(f, cell, evt); return; }
+    snapshot();
+    painting = true; last = "";
+    svg.setPointerCapture(evt.pointerId);
+    applyCell(cell);
+    updateHover(f, cell);
+  });
+  svg.addEventListener("pointermove", evt=>{
+    const cell = pickCell(f, svgPoint(svg,evt), evt.shiftKey);
+    if(painting) applyCell(cell);
+    updateHover(f, cell);   // after apply, so the highlight sits on the new height
+  });
+  svg.addEventListener("pointerleave", ()=>updateHover(f, null));
+  const stop = ()=>{ painting=false; last=""; };
+  svg.addEventListener("pointerup", stop);
+  svg.addEventListener("pointercancel", stop);
+}
+
+let floatEd = null;
+function closeFloatEd(){ if(floatEd){ floatEd.remove(); floatEd = null; } }
+function openLabelInput(f, cell, evt){
+  closeFloatEd();
+  const wrap = document.getElementById("wrap-"+f.id);
+  const existing = f.labels.find(l=>l.c===cell.c && l.r===cell.r);
+
+  const box = document.createElement("div");
+  box.className = "float-editor";
+  const input = document.createElement("input");
+  input.value = existing ? existing.text : "";
+  input.placeholder = "ラベル名";
+  input.setAttribute("aria-label","ラベル名");
+  let styleSel = existing?.style === "pin" ? "pin" : "tag";
+  const styleBtn = document.createElement("button");
+  const styleTxt = ()=>styleBtn.textContent = (styleSel==="pin" ? "ピン" : "タグ");
+  styleTxt(); styleBtn.title = "見た目を切り替え（タグ / ピン）";
+  styleBtn.addEventListener("pointerdown", e=>{
+    e.preventDefault();
+    styleSel = styleSel==="pin" ? "tag" : "pin"; styleTxt(); input.focus();
+  });
+  const ok = document.createElement("button");
+  ok.textContent = "保存"; ok.title = "保存 (Enter)";
+  box.append(input, styleBtn, ok);
+  let del = null;
+  if(existing){
+    del = document.createElement("button");
+    del.textContent = "削除"; del.className = "del"; del.title = "このラベルを削除";
+    box.append(del);
+  }
+  const rect = wrap.getBoundingClientRect();
+  box.style.left = Math.max(0, Math.min(evt.clientX - rect.left, rect.width - 230)) + "px";
+  box.style.top  = Math.max(0, evt.clientY - rect.top - 44) + "px";
+  wrap.appendChild(box);
+  floatEd = box;
+  input.focus(); input.select();
+
+  let done = false;
+  const commit = (save, remove)=>{
+    if(done) return; done = true;
+    if(save || remove){
+      snapshot();
+      f.labels = f.labels.filter(l=>!(l.c===cell.c && l.r===cell.r));
+      const text = input.value.trim();
+      if(!remove && text) f.labels.push({c:cell.c, r:cell.r, text, style:styleSel});
+      redraw(f);
+    }
+    closeFloatEd();
+  };
+  ok.addEventListener("pointerdown", e=>{ e.preventDefault(); commit(true,false); });
+  if(del) del.addEventListener("pointerdown", e=>{ e.preventDefault(); commit(false,true); });
+  input.addEventListener("keydown", e=>{
+    if(e.key==="Enter")  commit(true,false);
+    if(e.key==="Escape") commit(false,false);
+  });
+  input.addEventListener("blur", ()=>setTimeout(()=>commit(true,false), 0));
+}
+
+/* ================= undo ================= */
+function snapshot(){
+  undoStack.push(JSON.stringify(floors));
+  if(undoStack.length>60) undoStack.shift();
+}
+function undo(){
+  if(!undoStack.length) return;
+  floors = JSON.parse(undoStack.pop());
+  buildFloorsDOM();
+}
+
+/* ================= toolbar ================= */
+document.querySelectorAll("#toolGroup .tool").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    currentTool = b.dataset.tool;
+    document.querySelectorAll("#toolGroup .tool").forEach(x=>x.setAttribute("aria-pressed", x===b ? "true":"false"));
+  });
+});
+const pg = document.getElementById("paletteGroup");
+PALETTE.forEach(([hex,name],i)=>{
+  const s = document.createElement("button");
+  s.className = "swatch"; s.style.background = hex;
+  s.title = name; s.setAttribute("aria-label","色: "+name);
+  s.setAttribute("aria-pressed", i===0 ? "true":"false");
+  s.addEventListener("click", ()=>{
+    currentColor = hex;
+    pg.querySelectorAll(".swatch").forEach(x=>x.setAttribute("aria-pressed", x===s?"true":"false"));
+  });
+  pg.appendChild(s);
+});
+document.querySelectorAll("#heightGroup .mini").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    blockHeight = b.dataset.h;
+    document.querySelectorAll("#heightGroup .mini").forEach(x=>x.setAttribute("aria-pressed", x===b?"true":"false"));
+  });
+});
+const STAMP_TYPES = [
+  ["tree","木"], ["person","人"], ["arrow","矢印"], ["flag","旗"],
+  ["cross","立入禁止 ×"], ["rope","ロープ"], ["noentry","通行止め"]
+];
+{
+  const sg = document.getElementById("stampGroup");
+  STAMP_TYPES.forEach(([t,name],i)=>{
+    const b = document.createElement("button");
+    b.className = "mini icon"; b.dataset.s = t;
+    b.title = name; b.setAttribute("aria-label","スタンプ: "+name);
+    b.setAttribute("aria-pressed", i===0 ? "true" : "false");
+    b.innerHTML = `<svg viewBox="-14 -31 28 36" width="20" height="24" aria-hidden="true">${stampSVG(t,0,0)}</svg>`;
+    b.addEventListener("click", ()=>{
+      stampType = t;
+      sg.querySelectorAll(".mini").forEach(x=>x.setAttribute("aria-pressed", x===b ? "true":"false"));
+    });
+    sg.appendChild(b);
+  });
+}
+document.querySelectorAll("#pickGroup .mini").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    pickMode = b.dataset.p;
+    document.querySelectorAll("#pickGroup .mini").forEach(x=>x.setAttribute("aria-pressed", x===b?"true":"false"));
+  });
+});
+document.getElementById("gridToggle").addEventListener("change", e=>{
+  showGrid = e.target.checked; redrawAll();
+});
+const angleRange = document.getElementById("angleRange");
+const tiltRange  = document.getElementById("tiltRange");
+function applyView(){
+  viewAngle = +angleRange.value;
+  viewTilt  = +tiltRange.value/100;
+  document.getElementById("angleVal").textContent = viewAngle + "\u00b0";
+  document.getElementById("tiltVal").textContent  = tiltRange.value + "%";
+  redrawAll();
+}
+angleRange.addEventListener("input", applyView);
+tiltRange.addEventListener("input", applyView);
+document.getElementById("viewReset").addEventListener("click", ()=>{
+  angleRange.value = 45; tiltRange.value = 50; applyView();
+});
+const shadeRange  = document.getElementById("shadeRange");
+const shadowRange = document.getElementById("shadowRange");
+function applyLight(){
+  shadeAmt  = +shadeRange.value;
+  shadowAmt = +shadowRange.value;
+  redrawAll();
+}
+shadeRange.addEventListener("input", applyLight);
+shadowRange.addEventListener("input", applyLight);
+document.getElementById("undoBtn").addEventListener("click", undo);
+document.addEventListener("keydown", e=>{
+  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="z"){
+    const t = e.target.tagName;
+    if(t!=="INPUT" && t!=="TEXTAREA" && !e.target.isContentEditable){ e.preventDefault(); undo(); }
+  }
+});
+document.getElementById("addFloor").addEventListener("click", ()=>{
+  snapshot();
+  floors.push(newFloor(String(floors.length+1), "新しいフロア", ""));
+  buildFloorsDOM();
+  window.scrollTo({top:document.body.scrollHeight, behavior:"smooth"});
+});
+
+/* ================= save / load / export ================= */
+function download(name, blob){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();}, 500);
+}
+document.getElementById("saveBtn").addEventListener("click", ()=>{
+  const data = {title:document.getElementById("mapTitle").textContent.trim(),
+                view:{angle:viewAngle, tilt:viewTilt, shade:shadeAmt, shadow:shadowAmt}, floors};
+  download("isometric-map.json", new Blob([JSON.stringify(data,null,1)],{type:"application/json"}));
+});
+document.getElementById("loadBtn").addEventListener("click", ()=>document.getElementById("fileInput").click());
+document.getElementById("fileInput").addEventListener("change", e=>{
+  const file = e.target.files[0]; if(!file) return;
+  const fr = new FileReader();
+  fr.onload = ()=>{
+    try{
+      const data = JSON.parse(fr.result);
+      snapshot();
+      floors = data.floors || [];
+      floors.forEach(f=>{ f.id = uid++; f.cells = f.cells||{}; f.labels = f.labels||[]; f.stamps = f.stamps||[]; });
+      if(data.title) document.getElementById("mapTitle").textContent = data.title;
+      if(data.view){
+        angleRange.value = data.view.angle ?? 45;
+        tiltRange.value  = Math.round((data.view.tilt ?? 0.5)*100);
+        viewAngle = +angleRange.value; viewTilt = +tiltRange.value/100;
+        if(data.view.shade  != null){ shadeRange.value  = data.view.shade;  shadeAmt  = +shadeRange.value; }
+        if(data.view.shadow != null){ shadowRange.value = data.view.shadow; shadowAmt = +shadowRange.value; }
+        document.getElementById("angleVal").textContent = viewAngle + "\u00b0";
+        document.getElementById("tiltVal").textContent  = tiltRange.value + "%";
+      }
+      buildFloorsDOM();
+    }catch(err){ alert("読み込めませんでした: JSONファイルを確認してください"); }
+    e.target.value = "";
+  };
+  fr.readAsText(file);
+});
+
+document.getElementById("pngBtn").addEventListener("click", ()=>{
+  const title = document.getElementById("mapTitle").textContent.trim() || "MAP";
+  const m = viewMetrics();
+  const rowH = Math.ceil(m.h) + 20, headH = 90;
+  const W = Math.ceil(m.w) + 340, H = headH + floors.length*rowH + 30;
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
+  svg += `<rect width="${W}" height="${H}" fill="#23214A"/>`;
+  for(let i=0;i<70;i++){
+    svg += `<circle cx="${(i*137+31)%W}" cy="${(i*89+47)%H}" r="${i%3?1:1.7}" fill="${i%4?"#F3ECCF":"#E96A80"}" opacity="0.35"/>`;
+  }
+  svg += `<text x="26" y="62" font-family="Helvetica, Arial, sans-serif" font-size="54" font-weight="900" fill="#F3ECCF">${esc(title)}</text>`;
+  const savedGrid = showGrid; showGrid = false;
+  floors.forEach((f,i)=>{
+    const y0 = headH + i*rowH;
+    svg += `<g transform="translate(0,${y0})">${renderFloorSVG(f)}</g>`;
+    const pxr = Math.ceil(m.w) + 10;
+    svg += `<rect x="${pxr}" y="${y0+30}" width="300" height="16" rx="8" fill="#E96A80"/>`;
+    svg += `<text x="${pxr}" y="${y0+82}" font-family="Helvetica, Arial, sans-serif" font-size="44" font-weight="900" fill="#E96A80">${esc(f.num)}</text>`;
+    svg += `<text x="${pxr+78}" y="${y0+58}" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="800" fill="#F3ECCF">${esc(f.title.toUpperCase())}</text>`;
+    f.desc.split(/\n/).slice(0,6).forEach((line,li)=>{
+      svg += `<text x="${pxr+78}" y="${y0+78+li*17}" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#A9A7D6">${esc(line)}</text>`;
+    });
+  });
+  showGrid = savedGrid;
+  svg += "</svg>";
+
+  const img = new Image();
+  const url = URL.createObjectURL(new Blob([svg],{type:"image/svg+xml;charset=utf-8"}));
+  img.onload = ()=>{
+    const scale = 2;
+    const cv = document.createElement("canvas");
+    cv.width = W*scale; cv.height = H*scale;
+    const ctx = cv.getContext("2d");
+    ctx.scale(scale,scale); ctx.drawImage(img,0,0);
+    URL.revokeObjectURL(url);
+    cv.toBlob(b=>download("isometric-map.png", b), "image/png");
+  };
+  img.src = url;
+});
+
+/* ================= sample data ================= */
+function newFloor(num,title,desc){
+  return {id:uid++, num, title, desc, cells:{}, labels:[], stamps:[]};
+}
+function fillRect(f,c0,r0,c1,r1,color,kind){
+  for(let c=c0;c<=c1;c++)for(let r=r0;r<=r1;r++) f.cells[key(c,r)]={color,kind};
+}
+function sample(){
+  const GR="#F4ECC9", DG="#4C4E90", YL="#E96A80", CY="#8B8FD0", PK="#F0A3B0",
+        RD="#C94F63", MT="#D9C87F", WH="#FAF3DC";
+
+  const room = (f,c0,r0,c1,r1,color,label,kind="block")=>{
+    fillRect(f,c0,r0,c1,r1,color,kind);
+    if(label) f.labels.push({c:Math.round((c0+c1)/2), r:Math.round((r0+r1)/2), text:label});
+  };
+  const setRoof = (f,...pts)=>pts.forEach(([c,r])=>{ const cc=f.cells[key(c,r)]; if(cc) cc.roof = true; });
+  // 新館の共通部分: 縦の廊下・階段・WC
+  const shinkanBase = f=>{
+    fillRect(f,8,0,9,20,WH,"floor");           // 廊下
+    room(f,5,0,7,1,YL,"階段");                  // 北階段
+    room(f,6,4,7,4,CY,"男WC",null); f.cells[key(6,4)]={color:CY,kind:"low"}; f.cells[key(7,4)]={color:CY,kind:"low"};
+    f.labels.push({c:7,r:4,text:"男WC"});
+    fillRect(f,6,7,7,7,PK,"low"); f.labels.push({c:7,r:7,text:"女WC"});
+    room(f,10,8,12,9,YL,"階段");                // 中央階段
+    room(f,5,19,7,20,YL,"階段");                // 南階段
+    f.labels.push({c:3,r:1,text:"新館",style:"pin"});
+    f.labels.push({c:25,r:20,text:"旧館",style:"pin"});
+  };
+  // 東側(廊下沿い)の教室列
+  const eastRooms = (f,list)=>{
+    let r=0;
+    for(const [h,label] of list){ room(f,10,r,12,r+h-1,GR,label); r+=h; }
+  };
+  const westBlock = (f,label)=>room(f,1,9,5,14,DG,label,"high");   // 体育館などは高層
+  const oldWing = (f,rooms)=>{
+    fillRect(f,10,21,27,23,GR,"block");
+    if(rooms) rooms.forEach((t,i)=>{ if(t) f.labels.push({c:11+i*2, r:21+(i%2?2:0), text:t}); });
+    else f.labels.push({c:19,r:22,text:"×"});
+  };
+
+  /* ---- 5F ---- */
+  const f5 = newFloor("5","特別教室フロア","音楽・美術・調理・理科系の特別教室\n(新館のみ / 旧館は立入不可)");
+  shinkanBase(f5);
+  eastRooms(f5,[[3,"音楽教室"],[1,"音楽準備室"],[3,"美術教室"],[1,"美術準備室"]]);
+  room(f5,10,10,13,12,GR,"調理室");
+  room(f5,10,13,13,15,GR,"生物室");
+  room(f5,10,16,13,16,GR,"化学準備室");
+  room(f5,10,17,13,19,GR,"化学室");
+  westBlock(f5,"×");
+  oldWing(f5,null);
+  setRoof(f5,[10,21],[27,21],[27,23]);
+  f5.stamps = [{c:0,r:5,type:"tree"},{c:26,r:19,type:"tree"},{c:2,r:17,type:"tree"},
+               {c:8,r:20,type:"rope"},{c:9,r:20,type:"noentry"}];
+
+  /* ---- 4F ---- */
+  const f4 = newFloor("4","中学1年・図書室","401–404 中学1年教室\n図書室・被服室\n旧館: 高校教室 31–38");
+  shinkanBase(f4);
+  eastRooms(f4,[[2,"401 中1D"],[2,"402 中1C"],[2,"403 中1B"],[2,"404 中1A"]]);
+  room(f4,8,11,13,16,GR,"図書室");
+  room(f4,11,17,13,19,GR,"被服室");
+  westBlock(f4,"×");
+  room(f4,17,15,18,16,YL,"階段");
+  fillRect(f4,20,17,21,17,PK,"low"); f4.labels.push({c:21,r:17,text:"女WC"});
+  oldWing(f4,["38 高3A","37 高3B","36 高3C","35 高3D","34 高2C","33 高2D","32 高2E","31 高2F"]);
+  f4.stamps = [{c:9,r:9,type:"person"},{c:0,r:16,type:"tree"}];
+
+  /* ---- 3F ---- */
+  const f3 = newFloor("3","職員室・第3体育館","301–304 高校1年教室\n放送室・職員室\n旧館: 中学教室 21–28");
+  shinkanBase(f3);
+  eastRooms(f3,[[2,"301 高1F"],[2,"302 高1E"],[2,"303 高1D"],[2,"304 高1C"]]);
+  room(f3,11,10,13,11,GR,"放送室");
+  room(f3,8,12,10,18,RD,"×");
+  room(f3,11,12,13,18,GR,"職員室");
+  westBlock(f3,"第3体育館");
+  room(f3,17,15,18,16,YL,"階段");
+  oldWing(f3,["28 進路室","27","26 中3A","25 中3B","24 中2A","23 中2B","22 中2C","21 中2D"]);
+  f3.stamps = [{c:20,r:13,type:"flag"},{c:9,r:10,type:"person"},{c:9,r:15,type:"cross"}];
+
+  /* ---- 2F ---- */
+  const f2 = newFloor("2","玄関・受付","201–204 高校教室\n大会議室・保健室・カウンセリング室\n事務所・屋根あり外(機材/制服など)");
+  shinkanBase(f2);
+  eastRooms(f2,[[2,"201 高3A"],[2,"202 高2C"],[2,"203 高1B"],[2,"204 高1A"]]);
+  room(f2,10,10,13,13,GR,"玄関(受付)");
+  room(f2,10,14,13,15,GR,"大会議室");
+  room(f2,10,16,13,17,GR,"保健室");
+  fillRect(f2,6,15,7,17,GR,"low"); f2.labels.push({c:7,r:16,text:"カウンセリング室"});
+  westBlock(f2,"×");
+  room(f2,16,17,17,18,YL,"階段");
+  room(f2,12,21,14,23,MT,"屋根あり外");
+  room(f2,15,21,19,23,GR,"事務所");
+  fillRect(f2,20,21,27,23,GR,"block");
+  f2.labels.push({c:24,r:23,text:"×"});
+  f2.labels.push({c:11,r:10,text:"入口",style:"pin"});
+  f2.stamps = [{c:11,r:11,type:"arrow"},{c:7,r:11,type:"person"},{c:0,r:19,type:"tree"},
+               {c:9,r:19,type:"rope"}];
+
+  /* ---- 1F ---- */
+  const f1 = newFloor("1","ホール・売店","技術室・男子更衣室・視聴覚室\n第2体育館\n屋根あり外(廃棄場)・上階段");
+  shinkanBase(f1);
+  eastRooms(f1,[[3,"技術室"],[3,"男子更衣室"]]);
+  room(f1,10,10,13,13,GR,"ホール");
+  room(f1,12,15,13,16,GR,"売店");
+  room(f1,10,17,12,19,GR,"視聴覚室");
+  westBlock(f1,"第2体育館");
+  room(f1,8,21,11,23,MT,"屋根あり外(廃棄場)");
+  fillRect(f1,12,21,27,23,GR,"block");
+  f1.labels.push({c:20,r:22,text:"×"});
+  f1.stamps = [{c:2,r:17,type:"tree"},{c:0,r:10,type:"tree"},{c:25,r:20,type:"tree"},{c:9,r:12,type:"person"}];
+
+  floors = [f5, f4, f3, f2, f1];
+}
+sample();
+buildFloorsDOM();
+</script>
+</body>
+</html>
