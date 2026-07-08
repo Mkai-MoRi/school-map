@@ -353,7 +353,7 @@ let undoStack = [];
 let uid = 1;
 let stackViewActive = false;
 let renderingStack = false;
-const STACK_GAP = 160;
+const STACK_GAP = 250;
 
 /* ================= helpers ================= */
 const key = (c,r)=>c+","+r;
@@ -520,7 +520,7 @@ function renderFloorSVG(f){
   const topZAt = (cc,rr)=>{ const n=f.cells[key(cc,rr)]; return n ? (H_OF[n.kind]||0) : -1; };
 
   // ---- island base: ground slab extending one cell around everything ----
-  if(cells.length){
+  if(cells.length && !renderingStack){
     const bTop = "#3B3869";
     const baseSet = new Set();
     for(const cell of cells)
@@ -554,7 +554,7 @@ function renderFloorSVG(f){
   }
 
   // ---- soft cast shadows on the base (one merged path so overlaps stay even) ----
-  if(shadowAmt>0){
+  if(shadowAmt>0 && !renderingStack){
     const L = 10 + 8*(1-viewTilt);
     let d = "";
     for(const cell of cells){
