@@ -181,6 +181,45 @@
   @media (prefers-reduced-motion:no-preference){
     button.tool, button.act, .panel-btns button{transition:background .12s,color .12s,border-color .12s}
   }
+
+  /* ---------- stacked view ---------- */
+  #stack-view{display:none;padding:12px 26px 32px;max-width:1200px;margin:0 auto}
+  #stack-view.active{display:block}
+  .stack-head{
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+    padding-bottom:10px;margin-bottom:14px;
+    border-bottom:1px dashed var(--line);
+  }
+  .stack-title{font-size:11px;font-weight:800;letter-spacing:.22em;text-transform:uppercase;color:var(--lav)}
+  .stack-svg-wrap{
+    overflow:auto;background:rgba(27,25,56,.55);
+    border:1px solid var(--line);border-radius:8px;padding:10px;
+  }
+  #stackViewBtn[aria-pressed="true"]{background:var(--coral);border-color:var(--coral);color:var(--navy-deep)}
+
+  /* ---------- zone input popup ---------- */
+  .zone-editor{
+    position:absolute;z-index:20;display:flex;align-items:center;gap:5px;flex-wrap:wrap;
+    max-width:min(320px,90vw);
+    padding:6px 8px;border:2px solid var(--coral);background:var(--cream);border-radius:18px;
+    box-shadow:0 4px 14px rgba(0,0,0,.45);
+  }
+  .zone-editor input{
+    border:none;background:transparent;color:var(--navy-deep);font:inherit;font-size:12px;
+    font-weight:700;width:110px;outline:none;
+  }
+  .zone-editor button{
+    border:none;background:var(--navy);color:var(--cream);font-size:11px;font-weight:700;
+    padding:4px 10px;border-radius:999px;cursor:pointer;font-family:inherit;white-space:nowrap;
+  }
+  .zone-editor button:hover{background:var(--coral);color:var(--navy-deep)}
+  .zone-editor button.del{background:#D6455D;color:var(--cream)}
+  .zone-editor button.del:hover{background:#B32F46}
+  .zone-swatch{
+    width:20px;height:20px;border-radius:50%;border:1.5px solid rgba(243,236,207,.5);cursor:pointer;
+    flex:none;padding:0;
+  }
+  .zone-swatch[aria-pressed="true"]{outline:2.5px solid #23214A;outline-offset:1px}
 </style>
 </head>
 <body>
@@ -202,6 +241,7 @@
     <button class="tool" data-tool="stamp"  aria-pressed="false">スタンプ</button>
     <button class="tool" data-tool="erase"  aria-pressed="false">消す</button>
     <button class="tool" data-tool="label"  aria-pressed="false">ラベル</button>
+    <button class="tool" data-tool="zone"   aria-pressed="false">ゾーン</button>
   </div>
   <div class="tb-group" id="heightGroup">
     <span class="tb-label">高さ</span>
@@ -232,6 +272,7 @@
     <input type="range" id="tiltRange" min="15" max="90" step="1" value="50" aria-label="傾き">
     <span class="tb-val" id="tiltVal">50%</span>
     <button class="act" id="viewReset">視点リセット</button>
+    <button class="act" id="stackViewBtn" aria-pressed="false" title="全フロアを縦に重ねた一棟表示">積層ビュー</button>
   </div>
   <div class="tb-group" aria-label="ライティング">
     <span class="tb-label">陰影</span>
@@ -255,6 +296,16 @@
   </div>
   </div>
 </div>
+
+<section id="stack-view">
+  <div class="stack-head">
+    <span class="stack-title">▪ 積層ビュー — 全フロア一棟表示</span>
+    <button class="act" id="stackPngBtn">PNG書き出し</button>
+    <button class="act" id="stackSvgBtn">SVG書き出し</button>
+    <button class="act" id="stackClose">× 閉じる</button>
+  </div>
+  <div class="stack-svg-wrap" id="stackSvgWrap"></div>
+</section>
 
 <main id="floors"></main>
 
@@ -300,6 +351,9 @@ let currentColor = PALETTE[0][0];
 let showGrid = true;
 let undoStack = [];
 let uid = 1;
+let stackViewActive = false;
+let renderingStack = false;
+const STACK_GAP = 250;
 
 /* ================= helpers ================= */
 const key = (c,r)=>c+","+r;
@@ -444,14 +498,16 @@ function renderFloorSVG(f){
     out += g + "</g>";
   }
 
-  // decorative waves floating around the island
-  const wavePos = [[.05,.16],[.2,.05],[.55,.03],[.85,.07],[.95,.32],[.93,.68],[.7,.94],[.35,.96],[.05,.8],[.03,.45]];
-  out += '<g stroke="#8B8FD0" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.4">';
-  wavePos.forEach(([fx,fy],i)=>{
-    const wx = fx*VM.w, wy = fy*VM.h, s = 0.8 + (i%3)*0.25;
-    out += `<path d="M${wx},${wy} q ${5*s},${-4*s} ${10*s},0 q ${5*s},${4*s} ${10*s},0"/>`;
-  });
-  out += '</g>';
+  // decorative waves floating around the island (skip in stacked view)
+  if(!renderingStack){
+    const wavePos = [[.05,.16],[.2,.05],[.55,.03],[.85,.07],[.95,.32],[.93,.68],[.7,.94],[.35,.96],[.05,.8],[.03,.45]];
+    out += '<g stroke="#8B8FD0" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.4">';
+    wavePos.forEach(([fx,fy],i)=>{
+      const wx = fx*VM.w, wy = fy*VM.h, s = 0.8 + (i%3)*0.25;
+      out += `<path d="M${wx},${wy} q ${5*s},${-4*s} ${10*s},0 q ${5*s},${4*s} ${10*s},0"/>`;
+    });
+    out += '</g>';
+  }
 
   const cells = Object.keys(f.cells).map(k=>{
     const [c,r]=k.split(",").map(Number); return {c,r,...f.cells[k]};
@@ -464,7 +520,7 @@ function renderFloorSVG(f){
   const topZAt = (cc,rr)=>{ const n=f.cells[key(cc,rr)]; return n ? (H_OF[n.kind]||0) : -1; };
 
   // ---- island base: ground slab extending one cell around everything ----
-  if(cells.length){
+  if(cells.length && !renderingStack){
     const bTop = "#3B3869";
     const baseSet = new Set();
     for(const cell of cells)
@@ -498,7 +554,7 @@ function renderFloorSVG(f){
   }
 
   // ---- soft cast shadows on the base (one merged path so overlaps stay even) ----
-  if(shadowAmt>0){
+  if(shadowAmt>0 && !renderingStack){
     const L = 10 + 8*(1-viewTilt);
     let d = "";
     for(const cell of cells){
@@ -668,6 +724,32 @@ function renderFloorSVG(f){
            + `<text x="${cx}" y="${cy-9-bh+bh*0.73}" text-anchor="middle" font-size="${9.5*mul}" font-weight="700" fill="#23214A" font-family="Helvetica, Arial, sans-serif">${esc(lb.text)}</text></g>`;
     }
   }
+  // zones: colored overlay + dashed border + badge label
+  if(f.zones && f.zones.length){
+    for(const z of f.zones){
+      const {c0,r0,c1,r1,color,label} = z;
+      const A=[px(c0,   r0),    py(c0,   r0)];
+      const B=[px(c1+1, r0),    py(c1+1, r0)];
+      const C=[px(c1+1, r1+1),  py(c1+1, r1+1)];
+      const D=[px(c0,   r1+1),  py(c0,   r1+1)];
+      const pts=[A,B,C,D].map(p=>p[0].toFixed(1)+","+p[1].toFixed(1)).join(" ");
+      // Tint fill
+      out += `<polygon points="${pts}" fill="${color}" opacity="0.09" pointer-events="none"/>`;
+      // Dashed outline
+      out += `<polygon points="${pts}" fill="none" stroke="${color}" stroke-width="2.4" `
+           + `stroke-dasharray="9 5" stroke-linejoin="round" opacity="0.72" pointer-events="none"/>`;
+      // Badge at topmost corner
+      const topPt = [A,B,C,D].reduce((a,b)=>a[1]<=b[1]?a:b);
+      const bx = topPt[0], by = topPt[1] - 14;
+      const bw = Math.max(44, [...label].reduce((a,ch)=>a+(ch.charCodeAt(0)>255?11:6.5),0)+18);
+      out += `<rect x="${(bx-bw/2).toFixed(1)}" y="${(by-13).toFixed(1)}" width="${bw.toFixed(1)}" `
+           + `height="19" rx="9.5" fill="${color}" opacity="0.92" class="zone-badge" data-zid="${z.id}" style="cursor:pointer"/>`;
+      out += `<text x="${bx.toFixed(1)}" y="${(by+2).toFixed(1)}" text-anchor="middle" `
+           + `font-size="11" font-weight="800" fill="#F3ECCF" font-family="Helvetica,Arial,sans-serif" `
+           + `class="zone-badge" data-zid="${z.id}" style="cursor:pointer;pointer-events:none">${esc(label)}</text>`;
+    }
+  }
+
   return out;
 }
 
@@ -707,7 +789,7 @@ function redraw(f){
   applyLOD(f);
   if(typeof autosave === "function") autosave();
 }
-function redrawAll(){ floors.forEach(redraw); }
+function redrawAll(){ floors.forEach(redraw); if(stackViewActive) updateStackView(); }
 
 /* ================= DOM build ================= */
 function buildFloorsDOM(){
@@ -771,13 +853,14 @@ function buildFloorsDOM(){
     redraw(f);
   });
   if(typeof autosave === "function") autosave();
+  if(stackViewActive) updateStackView();
 }
 
 function floorAction(f, act, idx){
   if(act==="png"){ exportPNG([f], expScaleSel(), ("floor-"+(f.num||"x")).replace(/[^\w\-]/g,"_")+".png"); return; }
   snapshot();
   if(act==="del"){ floors = floors.filter(x=>x!==f); }
-  else if(act==="clear"){ f.cells={}; f.labels=[]; f.stamps=[]; f.walls=[]; }
+  else if(act==="clear"){ f.cells={}; f.labels=[]; f.stamps=[]; f.walls=[]; f.zones=[]; }
   else if(act==="dup"){
     const copy = JSON.parse(JSON.stringify(f)); copy.id = uid++;
     floors.splice(idx+1,0,copy);
@@ -932,6 +1015,7 @@ function attachPointer(f){
   let painting = false, last = "";
   const ptrs = new Map();
   let pinch = null, panFrom = null, lpTimer = null, lpStart = null;
+  let zoneStart = null;
   const cancelLP = ()=>{ if(lpTimer){ clearTimeout(lpTimer); lpTimer = null; } };
   const applyCell = cell=>{
     if(!cell) return;
@@ -997,6 +1081,15 @@ function attachPointer(f){
 
     const hit = evt.target.closest ? evt.target.closest("g.lbl") : null;
     if(hit){ openLabelInput(f, {c:+hit.dataset.c, r:+hit.dataset.r}, evt); return; }
+    // ゾーンバッジをクリックして編集
+    if(currentTool==="zone"){
+      const zbadge = evt.target.closest ? evt.target.closest("[data-zid]") : null;
+      if(zbadge){
+        const zid = +zbadge.dataset.zid;
+        const z = (f.zones||[]).find(z=>z.id===zid);
+        if(z){ openZoneInput(f, z.c0, z.r0, z.c1, z.r1, z, evt); return; }
+      }
+    }
     const cell = pickCell(f, svgPoint(svg,evt), evt.shiftKey);
     if(!cell) return;
     if(currentTool==="label"){ openLabelInput(f, cell, evt); return; }
@@ -1004,6 +1097,11 @@ function attachPointer(f){
       snapshot();
       toggleWallAt(f, cell, svgPoint(svg,evt));
       redraw(f);
+      return;
+    }
+    if(currentTool==="zone"){
+      zoneStart = cell;
+      updateZonePreview(f, cell, cell);
       return;
     }
 
@@ -1060,6 +1158,12 @@ function attachPointer(f){
     }
     if(lpTimer && lpStart && Math.hypot(evt.clientX-lpStart.x, evt.clientY-lpStart.y) > 8) cancelLP();
 
+    if(zoneStart && currentTool==="zone"){
+      const cell = pickCell(f, svgPoint(svg,evt), evt.shiftKey);
+      if(cell) updateZonePreview(f, zoneStart, cell);
+      return;
+    }
+
     const hit = evt.target.closest ? evt.target.closest("g.lbl") : null;
     if(hit && !painting){                                  // ラベルに乗ったら指し示す範囲を光らせる
       updateRegionHighlight(f, {c:+hit.dataset.c, r:+hit.dataset.r});
@@ -1076,11 +1180,117 @@ function attachPointer(f){
     if(evt) ptrs.delete(evt.pointerId);
     if(ptrs.size < 2) pinch = null;
     if(ptrs.size === 0) panFrom = null;
+    // ゾーンツール: ドラッグ完了でゾーン作成
+    if(zoneStart && currentTool==="zone" && evt){
+      const pt = svgPoint(svg, evt);
+      const cell = pickCell(f, pt, false);
+      clearZonePreview(f);
+      if(cell){
+        const c0=Math.min(zoneStart.c,cell.c), r0=Math.min(zoneStart.r,cell.r);
+        const c1=Math.max(zoneStart.c,cell.c), r1=Math.max(zoneStart.r,cell.r);
+        zoneStart = null;
+        openZoneInput(f, c0, r0, c1, r1, null, evt);
+        return;
+      }
+    }
+    zoneStart = null;
     painting = false; last = "";
     cancelLP();
   };
   svg.addEventListener("pointerup", stop);
   svg.addEventListener("pointercancel", stop);
+}
+
+/* ================= zone editing ================= */
+const ZONE_COLORS = ["#5B80E8","#E8A84A","#4CB87A","#C874C8","#58C4C4"];
+let zoneEd = null;
+function closeZoneEd(){ if(zoneEd){ zoneEd.remove(); zoneEd = null; } }
+
+function updateZonePreview(f, ca, cb){
+  const svg = document.getElementById("svg-"+f.id);
+  if(!svg) return;
+  let h = svg.querySelector(".zone-prev");
+  const c0=Math.min(ca.c,cb.c), r0=Math.min(ca.r,cb.r);
+  const c1=Math.max(ca.c,cb.c)+1, r1=Math.max(ca.r,cb.r)+1;
+  const pts=[[px(c0,r0),py(c0,r0)],[px(c1,r0),py(c1,r0)],[px(c1,r1),py(c1,r1)],[px(c0,r1),py(c0,r1)]]
+    .map(p=>p[0].toFixed(1)+","+p[1].toFixed(1)).join(" ");
+  if(!h){
+    h=document.createElementNS("http://www.w3.org/2000/svg","polygon");
+    h.setAttribute("class","zone-prev");
+    h.setAttribute("fill","rgba(255,255,255,0.08)");
+    h.setAttribute("stroke","#F3ECCF");
+    h.setAttribute("stroke-width","2.2");
+    h.setAttribute("stroke-dasharray","8 4");
+    h.setAttribute("stroke-linejoin","round");
+    h.setAttribute("pointer-events","none");
+    svg.appendChild(h);
+  }
+  h.setAttribute("points",pts);
+}
+function clearZonePreview(f){
+  const svg=document.getElementById("svg-"+f.id);
+  if(svg){ const h=svg.querySelector(".zone-prev"); if(h) h.remove(); }
+}
+
+function openZoneInput(f, c0, r0, c1, r1, existing, evt){
+  closeFloatEd(); closeZoneEd();
+  const wrap = document.getElementById("wrap-"+f.id);
+  let colorSel = existing ? existing.color : ZONE_COLORS[0];
+
+  const box = document.createElement("div");
+  box.className = "zone-editor";
+
+  const input = document.createElement("input");
+  input.value = existing ? existing.label : "";
+  input.placeholder = "エリア名";
+  input.setAttribute("aria-label","エリア名");
+
+  const swatchWrap = document.createElement("span");
+  swatchWrap.style.cssText = "display:flex;gap:4px;align-items:center";
+  const swatches = ZONE_COLORS.map(col=>{
+    const s = document.createElement("button");
+    s.className="zone-swatch"; s.style.background=col;
+    s.setAttribute("aria-pressed", col===colorSel?"true":"false");
+    s.setAttribute("aria-label","色: "+col);
+    s.addEventListener("pointerdown", e=>{
+      e.preventDefault(); colorSel=col;
+      swatches.forEach((x,i)=>x.setAttribute("aria-pressed",ZONE_COLORS[i]===col?"true":"false"));
+      input.focus();
+    });
+    swatchWrap.appendChild(s);
+    return s;
+  });
+
+  const ok = document.createElement("button"); ok.textContent="保存";
+  box.append(input, swatchWrap, ok);
+  let del=null;
+  if(existing){
+    del=document.createElement("button"); del.className="del"; del.textContent="削除";
+    box.append(del);
+  }
+
+  const rect=wrap.getBoundingClientRect();
+  box.style.left=Math.max(0,Math.min(evt.clientX-rect.left, rect.width-280))+"px";
+  box.style.top =Math.max(0,evt.clientY-rect.top-48)+"px";
+  wrap.appendChild(box); zoneEd=box;
+  input.focus(); input.select();
+
+  let done=false;
+  const commit=(save,remove)=>{
+    if(done) return; done=true;
+    if(save||remove){
+      snapshot();
+      f.zones=(f.zones||[]).filter(z=>z!==existing);
+      const text=input.value.trim();
+      if(!remove && text) f.zones.push({id:uid++,c0,r0,c1,r1,color:colorSel,label:text});
+      redraw(f);
+    }
+    closeZoneEd();
+  };
+  ok.addEventListener("pointerdown",e=>{ e.preventDefault(); commit(true,false); });
+  if(del) del.addEventListener("pointerdown",e=>{ e.preventDefault(); commit(false,true); });
+  input.addEventListener("keydown",e=>{ if(e.key==="Enter") commit(true,false); if(e.key==="Escape") commit(false,false); });
+  input.addEventListener("blur",()=>setTimeout(()=>commit(true,false),0));
 }
 
 let floatEd = null;
@@ -1178,6 +1388,131 @@ function redo(){
   floors = JSON.parse(redoStack.pop());
   buildFloorsDOM();
 }
+/* ================= stacked view ================= */
+function buildStackedContent(){
+  VM = viewMetrics();
+  const n = floors.length;
+  if(!n) return {body:"", w:100, h:100};
+
+  const totalW = Math.ceil(VM.w) + 90;
+  const totalH = Math.ceil(VM.h) + (n-1)*STACK_GAP;
+
+  renderingStack = true;
+  const savedGrid = showGrid;
+  const savedShadow = shadowAmt;
+  showGrid = false;
+  shadowAmt = Math.min(shadowAmt, 14);
+
+  let body = "";
+
+  // floors[0] = highest floor (top of stack, smallest y offset)
+  // floors[n-1] = ground floor (bottom of stack, largest y offset)
+  for(let i=0; i<n; i++){
+    const f = floors[i];
+    const yOff = i*STACK_GAP;
+    body += `<g transform="translate(0,${yOff})">${renderFloorSVG(f)}</g>`;
+
+    // Floor number label (right of map)
+    const lx = Math.ceil(VM.w)+16;
+    const ly = yOff + VM.oy;
+    body += `<text x="${lx}" y="${ly+4}" font-family="Helvetica,Arial,sans-serif" font-size="22" font-weight="900" fill="#E96A80" opacity="0.95">${esc(f.num)}</text>`;
+    body += `<text x="${lx}" y="${ly+20}" font-family="Helvetica,Arial,sans-serif" font-size="9" font-weight="700" fill="#A9A7D6" letter-spacing="0.08em">${esc(f.title.slice(0,10).toUpperCase())}</text>`;
+  }
+
+  // Staircase dotted connectors between adjacent floors
+  const STAIR_COLOR = "#e96a80";
+  for(let i=0; i<n-1; i++){
+    const fUp = floors[i], fDn = floors[i+1];
+    const yUp = i*STACK_GAP, yDn = (i+1)*STACK_GAP;
+
+    // Find cells that are staircase-colored in both adjacent floors
+    const shared = new Set();
+    for(const k of Object.keys(fUp.cells)){
+      const uc = fUp.cells[k], dc = fDn.cells[k];
+      if(dc && uc.color.toLowerCase()===STAIR_COLOR && dc.color.toLowerCase()===STAIR_COLOR)
+        shared.add(k);
+    }
+    if(!shared.size) continue;
+
+    // BFS: group connected staircase cells → one connector per region
+    const visited = new Set();
+    for(const k0 of shared){
+      if(visited.has(k0)) continue;
+      let sc=0, sr=0, cnt=0;
+      const q=[k0]; visited.add(k0);
+      while(q.length){
+        const cur=q.pop();
+        const [c,r]=cur.split(",").map(Number);
+        sc+=c; sr+=r; cnt++;
+        for(const [dc,dr] of [[1,0],[-1,0],[0,1],[0,-1]]){
+          const nk=(c+dc)+","+(r+dr);
+          if(shared.has(nk)&&!visited.has(nk)){visited.add(nk);q.push(nk);}
+        }
+      }
+      const cAvg=sc/cnt+0.5, rAvg=sr/cnt+0.5;
+      const tzUp=H_OF[fUp.cells[k0].kind]||0;
+      const tzDn=H_OF[fDn.cells[k0].kind]||0;
+
+      const lx=px(cAvg,rAvg);
+      const ly1=yUp+py(cAvg,rAvg)-tzUp;
+      const ly2=yDn+py(cAvg,rAvg)-tzDn;
+
+      // Dashed vertical connector
+      body += `<line x1="${lx.toFixed(1)}" y1="${ly1.toFixed(1)}" x2="${lx.toFixed(1)}" y2="${ly2.toFixed(1)}" `
+            + `stroke="#E96A80" stroke-width="2" stroke-dasharray="6 4.5" stroke-linecap="round" opacity="0.85"/>`;
+      // Endpoint dots
+      body += `<circle cx="${lx.toFixed(1)}" cy="${ly1.toFixed(1)}" r="3" fill="#E96A80" opacity="0.9"/>`;
+      body += `<circle cx="${lx.toFixed(1)}" cy="${ly2.toFixed(1)}" r="3" fill="#E96A80" opacity="0.9"/>`;
+    }
+  }
+
+  showGrid = savedGrid;
+  shadowAmt = savedShadow;
+  renderingStack = false;
+
+  return {body, w:totalW, h:totalH};
+}
+
+function updateStackView(){
+  const wrap = document.getElementById("stackSvgWrap");
+  if(!wrap || !stackViewActive) return;
+  const {body, w, h} = buildStackedContent();
+  wrap.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" `
+    + `style="width:100%;height:auto;display:block" role="img" aria-label="全フロア積層ビュー">${body}</svg>`;
+}
+
+function toggleStackView(on){
+  stackViewActive = (on!==undefined) ? on : !stackViewActive;
+  document.getElementById("stack-view").classList.toggle("active", stackViewActive);
+  const btn = document.getElementById("stackViewBtn");
+  if(btn) btn.setAttribute("aria-pressed", stackViewActive ? "true":"false");
+  if(stackViewActive){
+    updateStackView();
+    document.getElementById("stack-view").scrollIntoView({behavior:"smooth", block:"start"});
+  }
+}
+
+function exportStackedPNG(scale){
+  const {body, w, h} = buildStackedContent();
+  const title = document.getElementById("mapTitle").textContent.trim() || "MAP";
+  let dots = "";
+  for(let i=0;i<50;i++)
+    dots += `<circle cx="${(i*137+31)%w}" cy="${(i*89+47)%h}" r="${i%3?1:1.6}" fill="${i%4?"#F3ECCF":"#E96A80"}" opacity="0.3"/>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
+    + `<rect width="${w}" height="${h}" fill="#23214A"/>${dots}${body}</svg>`;
+  const img = new Image();
+  const url = URL.createObjectURL(new Blob([svg],{type:"image/svg+xml;charset=utf-8"}));
+  img.onload = ()=>{
+    const cv = document.createElement("canvas");
+    cv.width = w*scale; cv.height = h*scale;
+    const ctx = cv.getContext("2d");
+    ctx.scale(scale,scale); ctx.drawImage(img,0,0);
+    URL.revokeObjectURL(url);
+    cv.toBlob(b=>download("stacked-map.png",b),"image/png");
+  };
+  img.src = url;
+}
+
 /* ================= toolbar ================= */
 function updateToolContext(){
   // show the height chips only for the block tool, stamp types only for the stamp tool
@@ -1287,6 +1622,20 @@ document.addEventListener("keydown", e=>{
   else if(k==="z"){ e.preventDefault(); undo(); }
   else if(k==="y"){ e.preventDefault(); redo(); }
 });
+document.getElementById("stackViewBtn").addEventListener("click", ()=>toggleStackView());
+document.getElementById("stackClose").addEventListener("click", ()=>toggleStackView(false));
+document.getElementById("stackPngBtn").addEventListener("click", ()=>exportStackedPNG(expScaleSel()));
+document.getElementById("stackSvgBtn").addEventListener("click", ()=>{
+  const {body, w, h} = buildStackedContent();
+  const title = document.getElementById("mapTitle").textContent.trim() || "MAP";
+  let dots = "";
+  for(let i=0;i<50;i++)
+    dots += `<circle cx="${(i*137+31)%w}" cy="${(i*89+47)%h}" r="${i%3?1:1.6}" fill="${i%4?"#F3ECCF":"#E96A80"}" opacity="0.3"/>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
+    + `<rect width="${w}" height="${h}" fill="#23214A"/>${dots}${body}</svg>`;
+  download("stacked-map.svg", new Blob([svg],{type:"image/svg+xml"}));
+});
+
 document.getElementById("addFloor").addEventListener("click", ()=>{
   snapshot();
   floors.push(newFloor(String(floors.length+1), "新しいフロア", ""));
@@ -1323,7 +1672,7 @@ document.getElementById("fileInput").addEventListener("change", e=>{
 
 function applyLoadedData(data){
   floors = data.floors || [];
-  floors.forEach(f=>{ f.id = uid++; f.cells = f.cells||{}; f.labels = f.labels||[]; f.stamps = f.stamps||[]; f.walls = f.walls||[]; });
+  floors.forEach(f=>{ f.id = uid++; f.cells = f.cells||{}; f.labels = f.labels||[]; f.stamps = f.stamps||[]; f.walls = f.walls||[]; f.zones = f.zones||[]; });
   if(data.title) document.getElementById("mapTitle").textContent = data.title;
   if(data.view){
     angleRange.value = data.view.angle ?? 45;
@@ -1451,7 +1800,7 @@ document.getElementById("svgBtn").addEventListener("click", ()=>{
 });
 /* ================= sample data ================= */
 function newFloor(num,title,desc){
-  return {id:uid++, num, title, desc, cells:{}, labels:[], stamps:[], walls:[]};
+  return {id:uid++, num, title, desc, cells:{}, labels:[], stamps:[], walls:[], zones:[]};
 }
 function fillRect(f,c0,r0,c1,r1,color,kind){
   for(let c=c0;c<=c1;c++)for(let r=r0;r<=r1;r++) f.cells[key(c,r)]={color,kind};
@@ -1474,8 +1823,13 @@ function sample(){
     fillRect(f,6,7,7,7,PK,"low"); f.labels.push({c:7,r:7,text:"女WC"});
     room(f,10,8,12,9,YL,"階段");                // 中央階段
     room(f,5,19,7,20,YL,"階段");                // 南階段
-    f.labels.push({c:3,r:1,text:"新館",style:"pin"});
-    f.labels.push({c:25,r:20,text:"旧館",style:"pin"});
+  };
+  // ゾーン定義: 新館と旧館のエリアを色分け
+  const addBuildingZones=(f,kyukanTop)=>{
+    f.zones=[
+      {id:uid++, c0:0, r0:0, c1:13, r1:20, color:"#5B80E8", label:"新館"},
+      {id:uid++, c0:10, r0:kyukanTop, c1:27, r1:23, color:"#E8A84A", label:"旧館"},
+    ];
   };
   // 東側(廊下沿い)の教室列
   const eastRooms = (f,list)=>{
@@ -1511,6 +1865,7 @@ function sample(){
   setRoof(f5,[10,21],[27,21],[27,23]);
   f5.stamps = [{c:0,r:5,type:"tree"},{c:26,r:19,type:"tree"},{c:2,r:17,type:"tree"},
                {c:8,r:20,type:"rope"},{c:9,r:20,type:"noentry"}];
+  addBuildingZones(f5, 21);
 
   /* ---- 4F ---- */
   const f4 = newFloor("4","中学1年・図書室","401–404 中学1年教室\n図書室・被服室\n旧館: 高校教室 31–38");
@@ -1524,6 +1879,8 @@ function sample(){
   fillRect(f4,20,17,21,17,PK,"low"); f4.labels.push({c:21,r:17,text:"女WC"});
   oldWing(f4,["38 高3A","37 高3B","36 高3C","35 高3D","34 高2C","33 高2D","32 高2E","31 高2F"]);
   f4.stamps = [{c:9,r:9,type:"person"},{c:0,r:16,type:"tree"}];
+  addBuildingZones(f4, 13);
+  f4.zones.push({id:uid++, c0:14, r0:13, c1:27, r1:20, color:"#E8A84A", label:"旧館"});
 
   /* ---- 3F ---- */
   const f3 = newFloor("3","職員室・第3体育館","301–304 高校1年教室\n放送室・職員室\n旧館: 中学教室 21–28");
@@ -1536,6 +1893,8 @@ function sample(){
   room(f3,17,15,18,16,YL,"階段");
   oldWing(f3,["28 進路室","27","26 中3A","25 中3B","24 中2A","23 中2B","22 中2C","21 中2D"]);
   f3.stamps = [{c:20,r:13,type:"flag"},{c:9,r:10,type:"person"},{c:9,r:15,type:"cross"}];
+  addBuildingZones(f3, 13);
+  f3.zones.push({id:uid++, c0:14, r0:13, c1:27, r1:20, color:"#E8A84A", label:"旧館"});
 
   /* ---- 2F ---- */
   const f2 = newFloor("2","玄関・受付","201–204 高校教室\n大会議室・保健室・カウンセリング室\n事務所・屋根あり外(機材/制服など)");
@@ -1555,6 +1914,8 @@ function sample(){
   f2.labels.push({c:11,r:10,text:"入口",style:"pin"});
   f2.stamps = [{c:11,r:11,type:"arrow"},{c:7,r:11,type:"person"},{c:0,r:19,type:"tree"},
                {c:9,r:19,type:"rope"}];
+  addBuildingZones(f2, 21);
+  f2.zones.push({id:uid++, c0:14, r0:15, c1:27, r1:20, color:"#E8A84A", label:"旧館"});
 
   /* ---- 1F ---- */
   const f1 = newFloor("1","ホール・売店","技術室・男子更衣室・視聴覚室\n第2体育館\n屋根あり外(廃棄場)・上階段");
@@ -1568,6 +1929,7 @@ function sample(){
   fillRect(f1,12,21,27,23,GR,"block");
   f1.labels.push({c:20,r:22,text:"×"});
   f1.stamps = [{c:2,r:17,type:"tree"},{c:0,r:10,type:"tree"},{c:25,r:20,type:"tree"},{c:9,r:12,type:"person"}];
+  addBuildingZones(f1, 21);
 
   floors = [f5, f4, f3, f2, f1];
 }
