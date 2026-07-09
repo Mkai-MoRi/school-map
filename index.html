@@ -1455,14 +1455,16 @@ function redo(){
   buildFloorsDOM();
 }
 /* ================= stacked view ================= */
-function buildStackedContent(){
+function buildStackedContent(opts){
+  const gap = (opts && opts.gap) || STACK_GAP;
+  const floorLabels = !(opts && opts.floorLabels === false);
   VM = viewMetrics();
   const visible = floors.filter(f => !hiddenStackFloors.has(f.id));
   const n = visible.length;
   if(!n) return {body:"", w:100, h:100};
 
-  const totalW = Math.ceil(VM.w) + 90;
-  const totalH = Math.ceil(VM.h) + (n-1)*STACK_GAP;
+  const totalW = Math.ceil(VM.w) + (floorLabels ? 90 : 0);
+  const totalH = Math.ceil(VM.h) + (n-1)*gap;
 
   renderingStack = true;
   const savedGrid = showGrid;
@@ -1476,9 +1478,10 @@ function buildStackedContent(){
   let labels = "";
   for(let i=n-1; i>=0; i--){
     const f = visible[i];
-    const yOff = i*STACK_GAP;
+    const yOff = i*gap;
     body += `<g transform="translate(0,${yOff})">${renderFloorSVG(f)}</g>`;
 
+    if(!floorLabels) continue;
     // Collect floor labels separately so they render on top of all floors
     const lx = Math.ceil(VM.w)+16;
     const ly = yOff + VM.oy;
@@ -1490,7 +1493,7 @@ function buildStackedContent(){
   const STAIR_COLOR = "#e96a80";
   for(let i=0; i<n-1; i++){
     const fUp = visible[i], fDn = visible[i+1];
-    const yUp = i*STACK_GAP, yDn = (i+1)*STACK_GAP;
+    const yUp = i*gap, yDn = (i+1)*gap;
 
     // Find cells that are staircase-colored in both adjacent floors
     const shared = new Set();
@@ -1622,170 +1625,178 @@ function exportStackedPNG(scale){
 
 /* ================= B2 poster ================= */
 function buildB2PosterSVG(){
-  const {body, w: mw, h: mh} = buildStackedContent();
   const title = document.getElementById("mapTitle").textContent.trim() || "MAP";
   const visible = floors.filter(f => !hiddenStackFloors.has(f.id));
+  const n = Math.max(visible.length, 1);
 
   // Canvas: B2 proportions (1000×1414 units = 500mm×707mm)
   const W = 1000, H = 1414;
-  const M = 52; // margin
+  const M = 48; // margin
   const FONT = `'Helvetica Neue',Helvetica,Arial,'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,sans-serif`;
   const CORAL = "#E96A80", CREAM = "#F3ECCF", LAV = "#A9A7D6", LINE = "#413E6E";
 
-  // Layout zones
-  const headerY = M + 8;
-  const headerH = 118;
-  const sepY = headerY + headerH;
-  const contentY = sepY + 30;
-  const footerH = 34;
-  const footerY = H - M - footerH;
-  const sideW = 212;
-  const sideX = M;
-  const divX = sideX + sideW + 20;
-  const mapX = divX + 24;
-  const mapW = W - mapX - M;
-  const mapH = footerY - contentY - 14;
+  // Flatten the camera for the poster so the exploded floors read like plates
+  const savedTilt = viewTilt;
+  viewTilt = Math.min(viewTilt, 0.4);
+  const vm0 = viewMetrics();
+  const mw = Math.ceil(vm0.w);
+  const fh = Math.ceil(vm0.h);          // single-floor plate height (unscaled)
 
-  // Scale stacked content to fit map area
-  const fitScale = Math.min(mapW / mw, mapH / mh) * 0.92;
-  const scaledW = mw * fitScale;
-  const scaledH = mh * fitScale;
-  const mapOffX = mapX + (mapW - scaledW) / 2;
-  const mapOffY = contentY + (mapH - scaledH) / 2;
+  // Layout zones: left column (index+legend), big floor labels, exploded map
+  const footBoxH = 84;
+  const footTop = H - M - footBoxH - 26;
+  const leftX = M, leftW = 152;
+  const labelX = leftX + leftW + 12;
+  const mapX = 296;
+  const mapW = W - mapX - M + 14;
+  const mapY = 128;
+  const mapH = footTop - 16 - mapY;
+
+  // Fit: never wider than the column; keep at least half-plate separation
+  const fitScale = Math.min(mapW / mw, mapH / (fh + (n - 1) * fh * 0.5));
+  const gap = n > 1 ? (mapH / fitScale - fh) / (n - 1) : 0;
+
+  const {body, w: sw} = buildStackedContent({gap, floorLabels: false});
+  viewTilt = savedTilt;
+
+  const mapOffX = mapX + (mapW - sw * fitScale) / 2;
+  const mapOffY = mapY;
 
   let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">`;
 
-  // ── Defs ──────────────────────────────────────────────
+  // ── Defs / background ─────────────────────────────────
   s += `<defs>`
     + `<linearGradient id="b2bg" x1="0" y1="0" x2="0" y2="1">`
     + `<stop offset="0" stop-color="#282559"/><stop offset="0.55" stop-color="#23214A"/><stop offset="1" stop-color="#1E1C40"/>`
     + `</linearGradient>`
-    + `<radialGradient id="b2glow" cx="0.5" cy="0.5" r="0.5">`
-    + `<stop offset="0" stop-color="#8B8FD0" stop-opacity="0.14"/><stop offset="0.65" stop-color="#8B8FD0" stop-opacity="0.05"/><stop offset="1" stop-color="#8B8FD0" stop-opacity="0"/>`
-    + `</radialGradient>`
-    + `<linearGradient id="b2bar" x1="0" y1="0" x2="0" y2="1">`
-    + `<stop offset="0" stop-color="#F0A3B0"/><stop offset="1" stop-color="#E96A80"/>`
-    + `</linearGradient>`
     + `</defs>`;
-
-  // ── Background ────────────────────────────────────────
   s += `<rect width="${W}" height="${H}" fill="url(#b2bg)"/>`;
 
-  // Dot texture (sparse pseudo-random grid, kept clear of the margins)
-  for(let x = M + 12; x < W - M; x += 24)
-    for(let y = M + 12; y < H - M; y += 24){
-      const v = ((x * 7 + y * 13) % 19);
+  // Sparse dot texture
+  for(let x = 30; x < W - 30; x += 26)
+    for(let y = 30; y < H - 30; y += 26){
+      const v = ((x * 7 + y * 13) % 23);
       if(v > 6) continue;
-      const op = v < 2 ? 0.10 : 0.04;
-      s += `<circle cx="${x + (v % 3) * 2}" cy="${y}" r="0.9" fill="${CREAM}" opacity="${op}"/>`;
+      s += `<circle cx="${x + (v % 3) * 3}" cy="${y}" r="0.9" fill="${CREAM}" opacity="${v < 2 ? 0.09 : 0.035}"/>`;
     }
 
-  // ── Frame ─────────────────────────────────────────────
-  const F = M - 22;
-  s += `<rect x="${F}" y="${F}" width="${W - F * 2}" height="${H - F * 2}" rx="6" fill="none" stroke="${LINE}" stroke-width="1.4" opacity="0.8"/>`;
-  s += `<rect x="${F + 6}" y="${F + 6}" width="${W - (F + 6) * 2}" height="${H - (F + 6) * 2}" rx="3" fill="none" stroke="${LINE}" stroke-width="0.6" opacity="0.45"/>`;
-  // Coral corner marks over the frame
-  [[F, F, 1, 1],[W - F, F, -1, 1],[F, H - F, 1, -1],[W - F, H - F, -1, -1]].forEach(([cx, cy, sx, sy])=>{
-    const d = 26;
-    s += `<path d="M${cx} ${cy + sy * d} L${cx} ${cy} L${cx + sx * d} ${cy}" stroke="${CORAL}" stroke-width="2.6" fill="none" opacity="0.85" stroke-linecap="square"/>`;
-  });
+  // ── Header (top-left block) ───────────────────────────
+  // kicker with rules on both sides
+  s += `<line x1="${M}" y1="${M + 10}" x2="${M + 26}" y2="${M + 10}" stroke="${CORAL}" stroke-width="1.6"/>`;
+  s += `<text x="${M + 34}" y="${M + 14}" font-family="${FONT}" font-size="11" font-weight="700" fill="${LAV}" letter-spacing="0.3em">校内フロア案内図</text>`;
+  s += `<line x1="${M + 156}" y1="${M + 10}" x2="${M + 182}" y2="${M + 10}" stroke="${CORAL}" stroke-width="1.6"/>`;
 
-  // ── Header ────────────────────────────────────────────
-  // Coral accent bar (left of title)
-  s += `<rect x="${M}" y="${headerY + 4}" width="7" height="82" rx="3.5" fill="url(#b2bar)"/>`;
-
-  // Map title — size to fit, counting CJK glyphs as full-width
-  const glyphW = ch => /[　-鿿豈-﫿！-｠]/.test(ch) ? 1.0 : 0.62;
+  // Title, sized to fit (CJK counted as full-width)
+  const glyphW = ch => ch.charCodeAt(0) > 0x2E80 ? 1.0 : 0.62;
   const titleW = [...title].reduce((a, ch) => a + glyphW(ch), 0);
-  const titleMaxW = W - M * 2 - 130; // keep clear of the badge
-  const titleFontSize = Math.max(26, Math.min(58, Math.floor(titleMaxW / Math.max(titleW, 1))));
-  s += `<text x="${M + 24}" y="${headerY + 58}" font-family="${FONT}" `
-    + `font-size="${titleFontSize}" font-weight="900" fill="${CREAM}" letter-spacing="0.03em">${esc(title.toUpperCase())}</text>`;
-  s += `<text x="${M + 24}" y="${headerY + 88}" font-family="${FONT}" `
-    + `font-size="11" font-weight="700" fill="${LAV}" letter-spacing="0.3em">ISOMETRIC FLOOR MAP`
-    + `<tspan fill="${CORAL}" letter-spacing="0" dx="10">◆</tspan>`
-    + `<tspan letter-spacing="0.18em" dx="10">フロア案内図</tspan></text>`;
+  const titleFS = Math.max(28, Math.min(62, Math.floor(360 / Math.max(titleW, 1))));
+  const titleY = M + 34 + titleFS;
+  s += `<text x="${M}" y="${titleY}" font-family="${FONT}" font-size="${titleFS}" font-weight="900" fill="${CREAM}" letter-spacing="0.02em">${esc(title.toUpperCase())}</text>`;
+  // coral underline under the left part of the title
+  const titlePxW = Math.min(titleW * titleFS, 420);
+  s += `<rect x="${M}" y="${titleY + 10}" width="${(titlePxW * 0.55).toFixed(1)}" height="5" rx="2.5" fill="${CORAL}"/>`;
+  s += `<rect x="${(M + titlePxW * 0.55 + 6).toFixed(1)}" y="${titleY + 10}" width="14" height="5" rx="2.5" fill="${CORAL}" opacity="0.45"/>`;
 
-  // Floor count badge (top-right)
-  const bdgW = 84, bdgH = 68, bdgX = W - M - bdgW, bdgY = headerY + 8;
-  s += `<rect x="${bdgX}" y="${bdgY}" width="${bdgW}" height="${bdgH}" rx="14" fill="${CORAL}" opacity="0.09"/>`;
-  s += `<rect x="${bdgX}" y="${bdgY}" width="${bdgW}" height="${bdgH}" rx="14" fill="none" stroke="${CORAL}" stroke-width="1.2" opacity="0.5"/>`;
-  s += `<text x="${bdgX + bdgW / 2}" y="${bdgY + 42}" font-family="${FONT}" font-size="38" font-weight="900" fill="${CORAL}" text-anchor="middle">${visible.length}</text>`;
-  s += `<text x="${bdgX + bdgW / 2}" y="${bdgY + 58}" font-family="${FONT}" font-size="8" font-weight="700" fill="${LAV}" text-anchor="middle" letter-spacing="0.22em">FLOORS</text>`;
+  // Floor-count circle badge to the right of the title (allow for letter-spacing)
+  const bcx = M + titlePxW * 1.08 + 48, bcy = titleY - titleFS * 0.32;
+  s += `<circle cx="${bcx}" cy="${bcy}" r="27" fill="${CORAL}" opacity="0.08"/>`;
+  s += `<circle cx="${bcx}" cy="${bcy}" r="27" fill="none" stroke="${CORAL}" stroke-width="1.4" opacity="0.75"/>`;
+  s += `<text x="${bcx}" y="${bcy + 4}" font-family="${FONT}" font-size="22" font-weight="900" fill="${CORAL}" text-anchor="middle">${visible.length}</text>`;
+  s += `<text x="${bcx}" y="${bcy + 16}" font-family="${FONT}" font-size="6.5" font-weight="700" fill="${LAV}" text-anchor="middle" letter-spacing="0.18em">FLOORS</text>`;
 
-  // ── Separator ─────────────────────────────────────────
-  s += `<rect x="${M}" y="${sepY}" width="${W - M * 2}" height="1.2" fill="${CORAL}" opacity="0.4"/>`;
-  s += `<rect x="${W / 2 - 5}" y="${sepY - 3.4}" width="8" height="8" transform="rotate(45 ${W / 2 - 1} ${sepY + 0.6})" fill="${CORAL}" opacity="0.8"/>`;
-  s += `<circle cx="${M + 5}" cy="${sepY + 0.6}" r="3" fill="${CORAL}" opacity="0.75"/>`;
-  s += `<circle cx="${W - M - 5}" cy="${sepY + 0.6}" r="3" fill="${CORAL}" opacity="0.75"/>`;
+  // English subtitle + short description
+  s += `<text x="${M}" y="${titleY + 38}" font-family="${FONT}" font-size="10" font-weight="700" fill="${CORAL}" letter-spacing="0.32em">SCHOOL ISOMETRIC FLOOR MAP</text>`;
+  s += `<text x="${M}" y="${titleY + 60}" font-family="${FONT}" font-size="8.5" fill="${LAV}" opacity="0.85">校舎を上から順にフロアごとに分解して並べた案内図です。</text>`;
+  s += `<text x="${M}" y="${titleY + 74}" font-family="${FONT}" font-size="8.5" fill="${LAV}" opacity="0.85">各フロアの部屋の配置と、階段のつながりをひと目で確認できます。</text>`;
 
-  // Small caps section heading with coral tick, shared by sidebar blocks
+  // Compass (decorative, top-right)
+  const ccx = W - M - 20, ccy = M + 20;
+  s += `<circle cx="${ccx}" cy="${ccy}" r="16" fill="none" stroke="${LAV}" stroke-width="1" opacity="0.55"/>`;
+  s += `<path d="M${ccx} ${ccy - 11} L${ccx + 4.5} ${ccy + 4} L${ccx} ${ccy + 1} L${ccx - 4.5} ${ccy + 4} Z" fill="${CORAL}" opacity="0.9"/>`;
+  s += `<text x="${ccx}" y="${ccy + 13.5}" font-family="${FONT}" font-size="7" font-weight="800" fill="${LAV}" text-anchor="middle" opacity="0.8">N</text>`;
+
+  // Small caps section heading with coral tick
   const secHead = (x, y, en, jp) =>
     `<rect x="${x}" y="${y - 8}" width="10" height="2.4" rx="1.2" fill="${CORAL}" opacity="0.9"/>`
-    + `<text x="${x + 16}" y="${y}" font-family="${FONT}" font-size="8.5" font-weight="800" fill="${LAV}" letter-spacing="0.24em">${en}`
+    + `<text x="${x + 16}" y="${y}" font-family="${FONT}" font-size="8.5" font-weight="800" fill="${LAV}" letter-spacing="0.22em">${en}`
     + (jp ? `<tspan letter-spacing="0.1em" opacity="0.6" dx="8" font-size="7.5">${jp}</tspan>` : "") + `</text>`;
 
-  // ── Floor index sidebar ───────────────────────────────
-  s += secHead(sideX, contentY + 12, "FLOOR INDEX", "フロア索引");
-
-  const listY = contentY + 30;
-  const itemH = Math.min(74, Math.max(40, (footerY - listY - 60) / Math.max(visible.length + 3, 1)));
-  visible.forEach((f, i) => {
-    const fy = listY + i * itemH;
-    s += `<rect x="${sideX}" y="${fy}" width="${sideW}" height="${itemH - 8}" rx="8" fill="${CREAM}" opacity="${i % 2 ? 0.02 : 0.04}"/>`;
-    // floor-number chip
-    const chW = 40;
-    s += `<rect x="${sideX + 8}" y="${fy + 8}" width="${chW}" height="${itemH - 24}" rx="7" fill="${CORAL}" opacity="0.14"/>`;
-    s += `<rect x="${sideX + 8}" y="${fy + 8}" width="${chW}" height="${itemH - 24}" rx="7" fill="none" stroke="${CORAL}" stroke-width="1" opacity="0.55"/>`;
-    s += `<text x="${sideX + 8 + chW / 2}" y="${fy + (itemH - 8) / 2 + 7}" font-family="${FONT}" font-size="19" font-weight="900" fill="${CORAL}" text-anchor="middle">${esc(f.num || "?")}</text>`;
-    const tx = sideX + 8 + chW + 12;
-    if(f.title)
-      s += `<text x="${tx}" y="${fy + (f.desc ? 24 : (itemH - 8) / 2 + 4)}" font-family="${FONT}" font-size="11" font-weight="800" fill="${CREAM}" opacity="0.92">${esc(f.title.slice(0, 14))}</text>`;
-    if(f.desc)
-      s += `<text x="${tx}" y="${fy + 40}" font-family="${FONT}" font-size="8" fill="${LAV}" opacity="0.7">${esc(f.desc.slice(0, 20))}</text>`;
+  // ── Left column: floor index ──────────────────────────
+  const idxY = titleY + 108;
+  s += secHead(leftX, idxY, "FLOOR INDEX", "索引");
+  let cy2 = idxY + 18;
+  visible.forEach(f => {
+    s += `<rect x="${leftX}" y="${cy2}" width="22" height="22" rx="6" fill="${CORAL}" opacity="0.16"/>`;
+    s += `<rect x="${leftX}" y="${cy2}" width="22" height="22" rx="6" fill="none" stroke="${CORAL}" stroke-width="1" opacity="0.6"/>`;
+    s += `<text x="${leftX + 11}" y="${cy2 + 15.5}" font-family="${FONT}" font-size="12" font-weight="900" fill="${CORAL}" text-anchor="middle">${esc((f.num || "?").slice(0, 2))}</text>`;
+    s += `<text x="${leftX + 30}" y="${cy2 + 15}" font-family="${FONT}" font-size="9.5" font-weight="700" fill="${CREAM}" opacity="0.9">${esc((f.title || "").slice(0, 12))}</text>`;
+    cy2 += 32;
   });
 
-  // ── Legend (colors actually used on visible floors) ───
+  // ── Left column: legend (colors actually used) ────────
   const usedColors = new Set();
   visible.forEach(f => Object.values(f.cells).forEach(c => usedColors.add(c.color.toUpperCase())));
   const legendItems = PALETTE.filter(([hex]) => usedColors.has(hex.toUpperCase()));
-  let ly = listY + visible.length * itemH + 26;
+  cy2 += 18;
   if(legendItems.length){
-    s += secHead(sideX, ly, "LEGEND", "凡例");
-    ly += 16;
+    s += secHead(leftX, cy2, "LEGEND", "凡例");
+    cy2 += 16;
     legendItems.forEach(([hex, name]) => {
-      s += `<rect x="${sideX + 2}" y="${ly}" width="14" height="14" rx="4" fill="${hex}"/>`;
-      s += `<rect x="${sideX + 2}" y="${ly}" width="14" height="14" rx="4" fill="none" stroke="${CREAM}" stroke-width="0.5" opacity="0.25"/>`;
-      s += `<text x="${sideX + 24}" y="${ly + 11}" font-family="${FONT}" font-size="9" font-weight="600" fill="${LAV}" opacity="0.9">${esc(name)}</text>`;
-      ly += 22;
+      s += `<rect x="${leftX + 1}" y="${cy2}" width="13" height="13" rx="4" fill="${hex}"/>`;
+      s += `<rect x="${leftX + 1}" y="${cy2}" width="13" height="13" rx="4" fill="none" stroke="${CREAM}" stroke-width="0.5" opacity="0.25"/>`;
+      s += `<text x="${leftX + 22}" y="${cy2 + 10.5}" font-family="${FONT}" font-size="8.5" font-weight="600" fill="${LAV}" opacity="0.9">${esc(name)}</text>`;
+      cy2 += 21;
     });
   }
-  // Staircase-connector key
-  if(visible.length > 1){
-    ly += 10;
-    s += `<line x1="${sideX + 2}" y1="${ly + 7}" x2="${sideX + 16}" y2="${ly + 7}" stroke="${CORAL}" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="round" opacity="0.9"/>`;
-    s += `<circle cx="${sideX + 2}" cy="${ly + 7}" r="2.4" fill="${CORAL}"/><circle cx="${sideX + 16}" cy="${ly + 7}" r="2.4" fill="${CORAL}"/>`;
-    s += `<text x="${sideX + 24}" y="${ly + 11}" font-family="${FONT}" font-size="9" font-weight="600" fill="${LAV}" opacity="0.9">階段どうしの接続</text>`;
+  if(n > 1){
+    cy2 += 8;
+    s += `<line x1="${leftX + 1}" y1="${cy2 + 6}" x2="${leftX + 14}" y2="${cy2 + 6}" stroke="${CORAL}" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="round" opacity="0.9"/>`;
+    s += `<circle cx="${leftX + 1}" cy="${cy2 + 6}" r="2.2" fill="${CORAL}"/><circle cx="${leftX + 14}" cy="${cy2 + 6}" r="2.2" fill="${CORAL}"/>`;
+    s += `<text x="${leftX + 22}" y="${cy2 + 9.5}" font-family="${FONT}" font-size="8.5" font-weight="600" fill="${LAV}" opacity="0.9">階段どうしの接続</text>`;
   }
 
-  // ── Vertical divider ──────────────────────────────────
-  s += `<line x1="${divX}" y1="${contentY}" x2="${divX}" y2="${footerY - 6}" stroke="${LINE}" stroke-width="1"/>`;
-  s += `<rect x="${divX - 3}" y="${contentY + (footerY - contentY) / 2 - 3}" width="6" height="6" transform="rotate(45 ${divX} ${contentY + (footerY - contentY) / 2})" fill="${LINE}"/>`;
-
-  // ── Map area ─────────────────────────────────────────
-  s += `<rect x="${mapX - 12}" y="${contentY - 12}" width="${mapW + 24}" height="${mapH + 24}" rx="14" fill="#1B1938" opacity="0.6"/>`;
-  s += `<rect x="${mapX - 12}" y="${contentY - 12}" width="${mapW + 24}" height="${mapH + 24}" rx="14" fill="none" stroke="${LINE}" stroke-width="1" opacity="0.7"/>`;
-  s += `<ellipse cx="${mapX + mapW / 2}" cy="${contentY + mapH / 2}" rx="${mapW * 0.62}" ry="${mapH * 0.56}" fill="url(#b2glow)"/>`;
+  // ── Exploded floor stack ──────────────────────────────
   s += `<g transform="translate(${mapOffX.toFixed(2)},${mapOffY.toFixed(2)}) scale(${fitScale.toFixed(6)})">${body}</g>`;
 
-  // ── Footer ────────────────────────────────────────────
-  s += `<rect x="${M}" y="${footerY + 8}" width="${W - M * 2}" height="0.8" fill="${LINE}" opacity="0.8"/>`;
+  // ── Big floor labels (left of each plate) ─────────────
+  visible.forEach((f, i) => {
+    // label sits above the plate's left tip, where the diamond leaves room
+    const lyC = mapOffY + fitScale * (i * gap + fh * 0.42);
+    const numRaw = (f.num || "?").trim();
+    const withF = /^[0-9０-９]{1,2}$|^[BbＢ][0-9０-９]$/.test(numRaw);
+    s += `<text x="${labelX}" y="${lyC.toFixed(1)}" font-family="${FONT}" font-size="40" font-weight="900" fill="${CORAL}">${esc(numRaw)}`
+      + (withF ? `<tspan font-size="21" dx="2">F</tspan>` : "") + `</text>`;
+    s += `<rect x="${labelX + 2}" y="${(lyC + 10).toFixed(1)}" width="30" height="2.6" rx="1.3" fill="${CORAL}" opacity="0.55"/>`;
+    if(f.title)
+      s += `<text x="${labelX + 2}" y="${(lyC + 30).toFixed(1)}" font-family="${FONT}" font-size="11" font-weight="800" fill="${CREAM}" opacity="0.92">${esc(f.title.slice(0, 9))}</text>`;
+  });
+
+  // ── Footer note boxes ─────────────────────────────────
   const now = new Date();
   const ds = `${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')}`;
-  s += `<rect x="${M}" y="${footerY + 19}" width="5" height="5" rx="1" fill="${CORAL}" opacity="0.7"/>`;
-  s += `<text x="${M + 12}" y="${footerY + 25}" font-family="${FONT}" font-size="7.5" fill="${LAV}" opacity="0.6" letter-spacing="0.12em">${ds}</text>`;
-  s += `<text x="${W / 2}" y="${footerY + 25}" font-family="${FONT}" font-size="7.5" fill="${LAV}" opacity="0.5" text-anchor="middle" letter-spacing="0.14em">ISOMETRIC MAP BUILDER</text>`;
-  s += `<text x="${W - M}" y="${footerY + 25}" font-family="${FONT}" font-size="7.5" fill="${LAV}" opacity="0.6" text-anchor="end" letter-spacing="0.1em">B2 ・ 500 × 707 mm</text>`;
+  const boxGap = 14;
+  const boxW = (W - M * 2 - boxGap * 2) / 3;
+  const noteBox = (bx, headJP, lines, sample) => {
+    let b = `<rect x="${bx}" y="${footTop}" width="${boxW}" height="${footBoxH}" rx="9" fill="${CREAM}" opacity="0.025"/>`;
+    b += `<rect x="${bx}" y="${footTop}" width="${boxW}" height="${footBoxH}" rx="9" fill="none" stroke="${LINE}" stroke-width="1"/>`;
+    b += `<rect x="${bx + 14}" y="${footTop + 15}" width="4" height="12" rx="2" fill="${CORAL}"/>`;
+    b += `<text x="${bx + 25}" y="${footTop + 25}" font-family="${FONT}" font-size="10" font-weight="800" fill="${CREAM}" letter-spacing="0.12em">${headJP}</text>`;
+    lines.forEach((t, i) => {
+      b += `<text x="${bx + 14}" y="${footTop + 45 + i * 14}" font-family="${FONT}" font-size="8" fill="${LAV}" opacity="0.85">${t}</text>`;
+    });
+    if(sample) b += sample(bx);
+    return b;
+  };
+  s += noteBox(M, "階段のつながり", ["点線は上下フロアの階段の接続を", "示しています。"],
+    bx => `<line x1="${bx + 14}" y1="${footTop + 70}" x2="${bx + 44}" y2="${footTop + 70}" stroke="${CORAL}" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="round"/>`
+        + `<circle cx="${bx + 14}" cy="${footTop + 70}" r="2.4" fill="${CORAL}"/><circle cx="${bx + 44}" cy="${footTop + 70}" r="2.4" fill="${CORAL}"/>`);
+  s += noteBox(M + boxW + boxGap, "エリアの色分け", ["部屋は用途ごとに色分けされています。", "くわしくは左上の凡例をご覧ください。"],
+    bx => ["#E96A80","#F4ECC9","#8B8FD0","#4C4E90"].map((c, i) =>
+      `<rect x="${bx + 14 + i * 16}" y="${footTop + 62}" width="11" height="11" rx="3" fill="${c}"/>`).join(""));
+  s += noteBox(M + (boxW + boxGap) * 2, "マップ情報", [esc(title) + `　全${visible.length}フロア`, `発行 ${ds}`, "B2  500 × 707 mm"]);
+
+  // Bottom credit
+  s += `<text x="${W / 2}" y="${H - M + 24}" font-family="${FONT}" font-size="7" fill="${LAV}" opacity="0.5" text-anchor="middle" letter-spacing="0.22em">SCHOOL ISOMETRIC FLOOR MAP ・ ${ds}</text>`;
 
   s += `</svg>`;
   return {svg: s, W, H};
