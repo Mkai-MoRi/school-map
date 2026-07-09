@@ -196,6 +196,53 @@
     border:1px solid var(--line);border-radius:8px;padding:10px;
   }
   #stackViewBtn[aria-pressed="true"]{background:var(--coral);border-color:var(--coral);color:var(--navy-deep)}
+  .stack-floor-toggles{
+    display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+    padding:8px 0 4px;
+  }
+  .stack-floor-toggle-label{
+    font-size:10px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--lav);opacity:.7;margin-right:2px;
+  }
+  .stack-floor-chip{
+    display:inline-flex;align-items:center;gap:5px;
+    padding:4px 10px 4px 7px;border-radius:999px;cursor:pointer;
+    border:1.5px solid var(--line);background:rgba(43,40,90,.5);
+    font-family:inherit;font-size:11px;font-weight:700;color:var(--cream);
+    transition:border-color .15s,background .15s,opacity .15s;user-select:none;
+  }
+  .stack-floor-chip:hover{border-color:var(--coral);background:rgba(233,106,128,.12)}
+  .stack-floor-chip.hidden-floor{opacity:.38;border-color:rgba(169,167,214,.3);background:rgba(27,25,56,.3)}
+  .stack-floor-chip .chip-dot{
+    width:8px;height:8px;border-radius:50%;background:var(--coral);flex:none;
+    transition:background .15s;
+  }
+  .stack-floor-chip.hidden-floor .chip-dot{background:rgba(169,167,214,.4)}
+
+  /* ---------- B2 poster modal ---------- */
+  #b2Modal{
+    display:none;position:fixed;inset:0;z-index:900;
+    background:rgba(17,15,42,.92);
+    flex-direction:column;align-items:center;
+  }
+  #b2Modal.open{display:flex}
+  .b2-modal-bar{
+    width:100%;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    padding:10px 20px;background:rgba(27,25,56,.97);
+    border-bottom:1px solid var(--line);flex:none;
+  }
+  .b2-modal-title{
+    font-size:11px;font-weight:800;letter-spacing:.22em;text-transform:uppercase;color:var(--lav);
+  }
+  .b2-preview-wrap{
+    flex:1;overflow:auto;display:flex;align-items:flex-start;justify-content:center;
+    padding:24px 20px;
+  }
+  #b2PreviewSvg{
+    max-width:100%;height:auto;display:block;
+    border-radius:4px;
+    box-shadow:0 8px 40px rgba(0,0,0,.7);
+  }
 
   /* ---------- zone input popup ---------- */
   .zone-editor{
@@ -304,8 +351,26 @@
     <button class="act" id="stackSvgBtn">SVG書き出し</button>
     <button class="act" id="stackClose">× 閉じる</button>
   </div>
+  <div class="stack-floor-toggles" id="stackFloorToggles">
+    <span class="stack-floor-toggle-label">表示フロア:</span>
+  </div>
+  <button class="act" id="b2PosterBtn" style="background:rgba(233,106,128,.18);border-color:#E96A80;color:#E96A80">B2ポスター</button>
   <div class="stack-svg-wrap" id="stackSvgWrap"></div>
 </section>
+
+<!-- B2 poster modal -->
+<div id="b2Modal" role="dialog" aria-modal="true" aria-label="B2ポスタープレビュー">
+  <div class="b2-modal-bar">
+    <span class="b2-modal-title">▪ B2ポスタープレビュー (500×707mm)</span>
+    <button class="act" id="b2SvgExportBtn">SVG書き出し（ベクター）</button>
+    <button class="act" id="b2PngExportBtn">PNG書き出し（印刷用）</button>
+    <div class="spacer"></div>
+    <button class="act" id="b2CloseBtn">× 閉じる</button>
+  </div>
+  <div class="b2-preview-wrap">
+    <svg id="b2PreviewSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+</div>
 
 <main id="floors"></main>
 
@@ -354,6 +419,7 @@ let uid = 1;
 let stackViewActive = false;
 let renderingStack = false;
 const STACK_GAP = 250;
+const hiddenStackFloors = new Set(); // floor ids hidden in stacked view
 
 /* ================= helpers ================= */
 const key = (c,r)=>c+","+r;
@@ -859,7 +925,7 @@ function buildFloorsDOM(){
 function floorAction(f, act, idx){
   if(act==="png"){ exportPNG([f], expScaleSel(), ("floor-"+(f.num||"x")).replace(/[^\w\-]/g,"_")+".png"); return; }
   snapshot();
-  if(act==="del"){ floors = floors.filter(x=>x!==f); }
+  if(act==="del"){ hiddenStackFloors.delete(f.id); floors = floors.filter(x=>x!==f); }
   else if(act==="clear"){ f.cells={}; f.labels=[]; f.stamps=[]; f.walls=[]; f.zones=[]; }
   else if(act==="dup"){
     const copy = JSON.parse(JSON.stringify(f)); copy.id = uid++;
@@ -1391,7 +1457,8 @@ function redo(){
 /* ================= stacked view ================= */
 function buildStackedContent(){
   VM = viewMetrics();
-  const n = floors.length;
+  const visible = floors.filter(f => !hiddenStackFloors.has(f.id));
+  const n = visible.length;
   if(!n) return {body:"", w:100, h:100};
 
   const totalW = Math.ceil(VM.w) + 90;
@@ -1405,24 +1472,24 @@ function buildStackedContent(){
 
   let body = "";
 
-  // floors[0] = highest floor (top of stack, smallest y offset)
-  // floors[n-1] = ground floor (bottom of stack, largest y offset)
-  for(let i=0; i<n; i++){
-    const f = floors[i];
+  // Render bottom floor first, top floor last → top floor appears in front in SVG
+  let labels = "";
+  for(let i=n-1; i>=0; i--){
+    const f = visible[i];
     const yOff = i*STACK_GAP;
     body += `<g transform="translate(0,${yOff})">${renderFloorSVG(f)}</g>`;
 
-    // Floor number label (right of map)
+    // Collect floor labels separately so they render on top of all floors
     const lx = Math.ceil(VM.w)+16;
     const ly = yOff + VM.oy;
-    body += `<text x="${lx}" y="${ly+4}" font-family="Helvetica,Arial,sans-serif" font-size="22" font-weight="900" fill="#E96A80" opacity="0.95">${esc(f.num)}</text>`;
-    body += `<text x="${lx}" y="${ly+20}" font-family="Helvetica,Arial,sans-serif" font-size="9" font-weight="700" fill="#A9A7D6" letter-spacing="0.08em">${esc(f.title.slice(0,10).toUpperCase())}</text>`;
+    labels += `<text x="${lx}" y="${ly+4}" font-family="Helvetica,Arial,sans-serif" font-size="22" font-weight="900" fill="#E96A80" opacity="0.95">${esc(f.num)}</text>`;
+    labels += `<text x="${lx}" y="${ly+20}" font-family="Helvetica,Arial,sans-serif" font-size="9" font-weight="700" fill="#A9A7D6" letter-spacing="0.08em">${esc(f.title.slice(0,10).toUpperCase())}</text>`;
   }
 
-  // Staircase dotted connectors between adjacent floors
+  // Staircase dotted connectors between adjacent visible floors
   const STAIR_COLOR = "#e96a80";
   for(let i=0; i<n-1; i++){
-    const fUp = floors[i], fDn = floors[i+1];
+    const fUp = visible[i], fDn = visible[i+1];
     const yUp = i*STACK_GAP, yDn = (i+1)*STACK_GAP;
 
     // Find cells that are staircase-colored in both adjacent floors
@@ -1466,6 +1533,9 @@ function buildStackedContent(){
     }
   }
 
+  // Labels and connectors on top of all floors
+  body += labels;
+
   showGrid = savedGrid;
   shadowAmt = savedShadow;
   renderingStack = false;
@@ -1476,9 +1546,46 @@ function buildStackedContent(){
 function updateStackView(){
   const wrap = document.getElementById("stackSvgWrap");
   if(!wrap || !stackViewActive) return;
+  updateStackFloorToggles();
   const {body, w, h} = buildStackedContent();
   wrap.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" `
     + `style="width:100%;height:auto;display:block" role="img" aria-label="全フロア積層ビュー">${body}</svg>`;
+}
+
+function updateStackFloorToggles(){
+  const container = document.getElementById("stackFloorToggles");
+  if(!container) return;
+  // preserve label
+  container.innerHTML = '<span class="stack-floor-toggle-label">表示フロア:</span>';
+  floors.forEach(f => {
+    const hidden = hiddenStackFloors.has(f.id);
+    const chip = document.createElement("button");
+    chip.className = "stack-floor-chip" + (hidden ? " hidden-floor" : "");
+    chip.setAttribute("aria-pressed", String(!hidden));
+    chip.setAttribute("title", hidden ? "クリックして表示" : "クリックして非表示");
+    chip.innerHTML = `<span class="chip-dot"></span>${esc(f.num || "?")}${f.title ? " " + esc(f.title.slice(0,8)) : ""}`;
+    chip.addEventListener("click", () => {
+      if(hiddenStackFloors.has(f.id)) hiddenStackFloors.delete(f.id);
+      else hiddenStackFloors.add(f.id);
+      updateStackView();
+    });
+    container.appendChild(chip);
+  });
+
+  // 全表示 / 全非表示 shortcuts
+  if(floors.length > 1){
+    const sep = document.createElement("span");
+    sep.style.cssText = "color:var(--lav);opacity:.4;font-size:11px;margin:0 2px";
+    sep.textContent = "|";
+    container.appendChild(sep);
+
+    const showAll = document.createElement("button");
+    showAll.className = "stack-floor-chip";
+    showAll.style.cssText = "font-size:10px;padding:3px 8px;opacity:.7";
+    showAll.textContent = "全表示";
+    showAll.addEventListener("click", () => { hiddenStackFloors.clear(); updateStackView(); });
+    container.appendChild(showAll);
+  }
 }
 
 function toggleStackView(on){
@@ -1509,6 +1616,219 @@ function exportStackedPNG(scale){
     ctx.scale(scale,scale); ctx.drawImage(img,0,0);
     URL.revokeObjectURL(url);
     cv.toBlob(b=>download("stacked-map.png",b),"image/png");
+  };
+  img.src = url;
+}
+
+/* ================= B2 poster ================= */
+function buildB2PosterSVG(){
+  const {body, w: mw, h: mh} = buildStackedContent();
+  const title = document.getElementById("mapTitle").textContent.trim() || "MAP";
+  const visible = floors.filter(f => !hiddenStackFloors.has(f.id));
+
+  // Canvas: B2 proportions (1000×1414 units = 500mm×707mm)
+  const W = 1000, H = 1414;
+  const M = 52; // margin
+  const FONT = `'Helvetica Neue',Helvetica,Arial,'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,sans-serif`;
+  const CORAL = "#E96A80", CREAM = "#F3ECCF", LAV = "#A9A7D6", LINE = "#413E6E";
+
+  // Layout zones
+  const headerY = M + 8;
+  const headerH = 118;
+  const sepY = headerY + headerH;
+  const contentY = sepY + 30;
+  const footerH = 34;
+  const footerY = H - M - footerH;
+  const sideW = 212;
+  const sideX = M;
+  const divX = sideX + sideW + 20;
+  const mapX = divX + 24;
+  const mapW = W - mapX - M;
+  const mapH = footerY - contentY - 14;
+
+  // Scale stacked content to fit map area
+  const fitScale = Math.min(mapW / mw, mapH / mh) * 0.92;
+  const scaledW = mw * fitScale;
+  const scaledH = mh * fitScale;
+  const mapOffX = mapX + (mapW - scaledW) / 2;
+  const mapOffY = contentY + (mapH - scaledH) / 2;
+
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">`;
+
+  // ── Defs ──────────────────────────────────────────────
+  s += `<defs>`
+    + `<linearGradient id="b2bg" x1="0" y1="0" x2="0" y2="1">`
+    + `<stop offset="0" stop-color="#282559"/><stop offset="0.55" stop-color="#23214A"/><stop offset="1" stop-color="#1E1C40"/>`
+    + `</linearGradient>`
+    + `<radialGradient id="b2glow" cx="0.5" cy="0.5" r="0.5">`
+    + `<stop offset="0" stop-color="#8B8FD0" stop-opacity="0.14"/><stop offset="0.65" stop-color="#8B8FD0" stop-opacity="0.05"/><stop offset="1" stop-color="#8B8FD0" stop-opacity="0"/>`
+    + `</radialGradient>`
+    + `<linearGradient id="b2bar" x1="0" y1="0" x2="0" y2="1">`
+    + `<stop offset="0" stop-color="#F0A3B0"/><stop offset="1" stop-color="#E96A80"/>`
+    + `</linearGradient>`
+    + `</defs>`;
+
+  // ── Background ────────────────────────────────────────
+  s += `<rect width="${W}" height="${H}" fill="url(#b2bg)"/>`;
+
+  // Dot texture (sparse pseudo-random grid, kept clear of the margins)
+  for(let x = M + 12; x < W - M; x += 24)
+    for(let y = M + 12; y < H - M; y += 24){
+      const v = ((x * 7 + y * 13) % 19);
+      if(v > 6) continue;
+      const op = v < 2 ? 0.10 : 0.04;
+      s += `<circle cx="${x + (v % 3) * 2}" cy="${y}" r="0.9" fill="${CREAM}" opacity="${op}"/>`;
+    }
+
+  // ── Frame ─────────────────────────────────────────────
+  const F = M - 22;
+  s += `<rect x="${F}" y="${F}" width="${W - F * 2}" height="${H - F * 2}" rx="6" fill="none" stroke="${LINE}" stroke-width="1.4" opacity="0.8"/>`;
+  s += `<rect x="${F + 6}" y="${F + 6}" width="${W - (F + 6) * 2}" height="${H - (F + 6) * 2}" rx="3" fill="none" stroke="${LINE}" stroke-width="0.6" opacity="0.45"/>`;
+  // Coral corner marks over the frame
+  [[F, F, 1, 1],[W - F, F, -1, 1],[F, H - F, 1, -1],[W - F, H - F, -1, -1]].forEach(([cx, cy, sx, sy])=>{
+    const d = 26;
+    s += `<path d="M${cx} ${cy + sy * d} L${cx} ${cy} L${cx + sx * d} ${cy}" stroke="${CORAL}" stroke-width="2.6" fill="none" opacity="0.85" stroke-linecap="square"/>`;
+  });
+
+  // ── Header ────────────────────────────────────────────
+  // Coral accent bar (left of title)
+  s += `<rect x="${M}" y="${headerY + 4}" width="7" height="82" rx="3.5" fill="url(#b2bar)"/>`;
+
+  // Map title — size to fit, counting CJK glyphs as full-width
+  const glyphW = ch => /[　-鿿豈-﫿！-｠]/.test(ch) ? 1.0 : 0.62;
+  const titleW = [...title].reduce((a, ch) => a + glyphW(ch), 0);
+  const titleMaxW = W - M * 2 - 130; // keep clear of the badge
+  const titleFontSize = Math.max(26, Math.min(58, Math.floor(titleMaxW / Math.max(titleW, 1))));
+  s += `<text x="${M + 24}" y="${headerY + 58}" font-family="${FONT}" `
+    + `font-size="${titleFontSize}" font-weight="900" fill="${CREAM}" letter-spacing="0.03em">${esc(title.toUpperCase())}</text>`;
+  s += `<text x="${M + 24}" y="${headerY + 88}" font-family="${FONT}" `
+    + `font-size="11" font-weight="700" fill="${LAV}" letter-spacing="0.3em">ISOMETRIC FLOOR MAP`
+    + `<tspan fill="${CORAL}" letter-spacing="0" dx="10">◆</tspan>`
+    + `<tspan letter-spacing="0.18em" dx="10">フロア案内図</tspan></text>`;
+
+  // Floor count badge (top-right)
+  const bdgW = 84, bdgH = 68, bdgX = W - M - bdgW, bdgY = headerY + 8;
+  s += `<rect x="${bdgX}" y="${bdgY}" width="${bdgW}" height="${bdgH}" rx="14" fill="${CORAL}" opacity="0.09"/>`;
+  s += `<rect x="${bdgX}" y="${bdgY}" width="${bdgW}" height="${bdgH}" rx="14" fill="none" stroke="${CORAL}" stroke-width="1.2" opacity="0.5"/>`;
+  s += `<text x="${bdgX + bdgW / 2}" y="${bdgY + 42}" font-family="${FONT}" font-size="38" font-weight="900" fill="${CORAL}" text-anchor="middle">${visible.length}</text>`;
+  s += `<text x="${bdgX + bdgW / 2}" y="${bdgY + 58}" font-family="${FONT}" font-size="8" font-weight="700" fill="${LAV}" text-anchor="middle" letter-spacing="0.22em">FLOORS</text>`;
+
+  // ── Separator ─────────────────────────────────────────
+  s += `<rect x="${M}" y="${sepY}" width="${W - M * 2}" height="1.2" fill="${CORAL}" opacity="0.4"/>`;
+  s += `<rect x="${W / 2 - 5}" y="${sepY - 3.4}" width="8" height="8" transform="rotate(45 ${W / 2 - 1} ${sepY + 0.6})" fill="${CORAL}" opacity="0.8"/>`;
+  s += `<circle cx="${M + 5}" cy="${sepY + 0.6}" r="3" fill="${CORAL}" opacity="0.75"/>`;
+  s += `<circle cx="${W - M - 5}" cy="${sepY + 0.6}" r="3" fill="${CORAL}" opacity="0.75"/>`;
+
+  // Small caps section heading with coral tick, shared by sidebar blocks
+  const secHead = (x, y, en, jp) =>
+    `<rect x="${x}" y="${y - 8}" width="10" height="2.4" rx="1.2" fill="${CORAL}" opacity="0.9"/>`
+    + `<text x="${x + 16}" y="${y}" font-family="${FONT}" font-size="8.5" font-weight="800" fill="${LAV}" letter-spacing="0.24em">${en}`
+    + (jp ? `<tspan letter-spacing="0.1em" opacity="0.6" dx="8" font-size="7.5">${jp}</tspan>` : "") + `</text>`;
+
+  // ── Floor index sidebar ───────────────────────────────
+  s += secHead(sideX, contentY + 12, "FLOOR INDEX", "フロア索引");
+
+  const listY = contentY + 30;
+  const itemH = Math.min(74, Math.max(40, (footerY - listY - 60) / Math.max(visible.length + 3, 1)));
+  visible.forEach((f, i) => {
+    const fy = listY + i * itemH;
+    s += `<rect x="${sideX}" y="${fy}" width="${sideW}" height="${itemH - 8}" rx="8" fill="${CREAM}" opacity="${i % 2 ? 0.02 : 0.04}"/>`;
+    // floor-number chip
+    const chW = 40;
+    s += `<rect x="${sideX + 8}" y="${fy + 8}" width="${chW}" height="${itemH - 24}" rx="7" fill="${CORAL}" opacity="0.14"/>`;
+    s += `<rect x="${sideX + 8}" y="${fy + 8}" width="${chW}" height="${itemH - 24}" rx="7" fill="none" stroke="${CORAL}" stroke-width="1" opacity="0.55"/>`;
+    s += `<text x="${sideX + 8 + chW / 2}" y="${fy + (itemH - 8) / 2 + 7}" font-family="${FONT}" font-size="19" font-weight="900" fill="${CORAL}" text-anchor="middle">${esc(f.num || "?")}</text>`;
+    const tx = sideX + 8 + chW + 12;
+    if(f.title)
+      s += `<text x="${tx}" y="${fy + (f.desc ? 24 : (itemH - 8) / 2 + 4)}" font-family="${FONT}" font-size="11" font-weight="800" fill="${CREAM}" opacity="0.92">${esc(f.title.slice(0, 14))}</text>`;
+    if(f.desc)
+      s += `<text x="${tx}" y="${fy + 40}" font-family="${FONT}" font-size="8" fill="${LAV}" opacity="0.7">${esc(f.desc.slice(0, 20))}</text>`;
+  });
+
+  // ── Legend (colors actually used on visible floors) ───
+  const usedColors = new Set();
+  visible.forEach(f => Object.values(f.cells).forEach(c => usedColors.add(c.color.toUpperCase())));
+  const legendItems = PALETTE.filter(([hex]) => usedColors.has(hex.toUpperCase()));
+  let ly = listY + visible.length * itemH + 26;
+  if(legendItems.length){
+    s += secHead(sideX, ly, "LEGEND", "凡例");
+    ly += 16;
+    legendItems.forEach(([hex, name]) => {
+      s += `<rect x="${sideX + 2}" y="${ly}" width="14" height="14" rx="4" fill="${hex}"/>`;
+      s += `<rect x="${sideX + 2}" y="${ly}" width="14" height="14" rx="4" fill="none" stroke="${CREAM}" stroke-width="0.5" opacity="0.25"/>`;
+      s += `<text x="${sideX + 24}" y="${ly + 11}" font-family="${FONT}" font-size="9" font-weight="600" fill="${LAV}" opacity="0.9">${esc(name)}</text>`;
+      ly += 22;
+    });
+  }
+  // Staircase-connector key
+  if(visible.length > 1){
+    ly += 10;
+    s += `<line x1="${sideX + 2}" y1="${ly + 7}" x2="${sideX + 16}" y2="${ly + 7}" stroke="${CORAL}" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="round" opacity="0.9"/>`;
+    s += `<circle cx="${sideX + 2}" cy="${ly + 7}" r="2.4" fill="${CORAL}"/><circle cx="${sideX + 16}" cy="${ly + 7}" r="2.4" fill="${CORAL}"/>`;
+    s += `<text x="${sideX + 24}" y="${ly + 11}" font-family="${FONT}" font-size="9" font-weight="600" fill="${LAV}" opacity="0.9">階段どうしの接続</text>`;
+  }
+
+  // ── Vertical divider ──────────────────────────────────
+  s += `<line x1="${divX}" y1="${contentY}" x2="${divX}" y2="${footerY - 6}" stroke="${LINE}" stroke-width="1"/>`;
+  s += `<rect x="${divX - 3}" y="${contentY + (footerY - contentY) / 2 - 3}" width="6" height="6" transform="rotate(45 ${divX} ${contentY + (footerY - contentY) / 2})" fill="${LINE}"/>`;
+
+  // ── Map area ─────────────────────────────────────────
+  s += `<rect x="${mapX - 12}" y="${contentY - 12}" width="${mapW + 24}" height="${mapH + 24}" rx="14" fill="#1B1938" opacity="0.6"/>`;
+  s += `<rect x="${mapX - 12}" y="${contentY - 12}" width="${mapW + 24}" height="${mapH + 24}" rx="14" fill="none" stroke="${LINE}" stroke-width="1" opacity="0.7"/>`;
+  s += `<ellipse cx="${mapX + mapW / 2}" cy="${contentY + mapH / 2}" rx="${mapW * 0.62}" ry="${mapH * 0.56}" fill="url(#b2glow)"/>`;
+  s += `<g transform="translate(${mapOffX.toFixed(2)},${mapOffY.toFixed(2)}) scale(${fitScale.toFixed(6)})">${body}</g>`;
+
+  // ── Footer ────────────────────────────────────────────
+  s += `<rect x="${M}" y="${footerY + 8}" width="${W - M * 2}" height="0.8" fill="${LINE}" opacity="0.8"/>`;
+  const now = new Date();
+  const ds = `${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')}`;
+  s += `<rect x="${M}" y="${footerY + 19}" width="5" height="5" rx="1" fill="${CORAL}" opacity="0.7"/>`;
+  s += `<text x="${M + 12}" y="${footerY + 25}" font-family="${FONT}" font-size="7.5" fill="${LAV}" opacity="0.6" letter-spacing="0.12em">${ds}</text>`;
+  s += `<text x="${W / 2}" y="${footerY + 25}" font-family="${FONT}" font-size="7.5" fill="${LAV}" opacity="0.5" text-anchor="middle" letter-spacing="0.14em">ISOMETRIC MAP BUILDER</text>`;
+  s += `<text x="${W - M}" y="${footerY + 25}" font-family="${FONT}" font-size="7.5" fill="${LAV}" opacity="0.6" text-anchor="end" letter-spacing="0.1em">B2 ・ 500 × 707 mm</text>`;
+
+  s += `</svg>`;
+  return {svg: s, W, H};
+}
+
+function showB2Preview(){
+  const {svg, W, H} = buildB2PosterSVG();
+  const modal = document.getElementById("b2Modal");
+  const previewEl = document.getElementById("b2PreviewSvg");
+  // Replace the preview SVG element's content
+  const tmp = document.createElement("div");
+  tmp.innerHTML = svg;
+  const newSvg = tmp.querySelector("svg");
+  // Copy all attributes and children into previewEl
+  previewEl.setAttribute("viewBox", newSvg.getAttribute("viewBox"));
+  previewEl.setAttribute("width", W);
+  previewEl.setAttribute("height", H);
+  previewEl.style.maxHeight = "80vh";
+  previewEl.innerHTML = newSvg.innerHTML;
+  modal.classList.add("open");
+}
+
+function exportB2SVG(){
+  const {svg} = buildB2PosterSVG();
+  const title = document.getElementById("mapTitle").textContent.trim() || "map";
+  download(title.replace(/[^\w\-]/g,"_") + "-B2.svg", new Blob([svg], {type:"image/svg+xml"}));
+}
+
+function exportB2PNG(){
+  const {svg, W, H} = buildB2PosterSVG();
+  // 3× → 3000×4242px ≈ B2 at ~152dpi (印刷ポスター用途で十分)
+  const pxScale = 3;
+  const img = new Image();
+  const url = URL.createObjectURL(new Blob([svg], {type:"image/svg+xml;charset=utf-8"}));
+  img.onload = () => {
+    const cv = document.createElement("canvas");
+    cv.width = W * pxScale; cv.height = H * pxScale;
+    const ctx = cv.getContext("2d");
+    ctx.scale(pxScale, pxScale);
+    ctx.drawImage(img, 0, 0);
+    URL.revokeObjectURL(url);
+    const title = document.getElementById("mapTitle").textContent.trim() || "map";
+    cv.toBlob(b => download(title.replace(/[^\w\-]/g,"_") + "-B2-print.png", b), "image/png");
   };
   img.src = url;
 }
@@ -1624,6 +1944,13 @@ document.addEventListener("keydown", e=>{
 });
 document.getElementById("stackViewBtn").addEventListener("click", ()=>toggleStackView());
 document.getElementById("stackClose").addEventListener("click", ()=>toggleStackView(false));
+document.getElementById("b2PosterBtn").addEventListener("click", ()=>showB2Preview());
+document.getElementById("b2CloseBtn").addEventListener("click", ()=>document.getElementById("b2Modal").classList.remove("open"));
+document.getElementById("b2SvgExportBtn").addEventListener("click", exportB2SVG);
+document.getElementById("b2PngExportBtn").addEventListener("click", exportB2PNG);
+document.getElementById("b2Modal").addEventListener("click", e=>{
+  if(e.target === document.getElementById("b2Modal")) document.getElementById("b2Modal").classList.remove("open");
+});
 document.getElementById("stackPngBtn").addEventListener("click", ()=>exportStackedPNG(expScaleSel()));
 document.getElementById("stackSvgBtn").addEventListener("click", ()=>{
   const {body, w, h} = buildStackedContent();
