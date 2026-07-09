@@ -491,6 +491,18 @@ function stampSVG(type, x, y){
       + `<line x1="${x}" y1="${y}" x2="${x}" y2="${y-9}" stroke="${CM}" stroke-width="1.8"/>`
       + `<circle cx="${x}" cy="${y-16}" r="7.5" fill="${RD}" stroke="${CM}" stroke-width="1.6"/>`
       + `<rect x="${x-4.6}" y="${y-17.4}" width="9.2" height="2.8" rx="1.4" fill="${CM}"/></g>`;
+    case "wcmale": return `<g>${gnd}`
+      + `<line x1="${x}" y1="${y}" x2="${x}" y2="${y-9}" stroke="${CM}" stroke-width="1.8"/>`
+      + `<rect x="${x-8}" y="${y-27}" width="16" height="18" rx="3" fill="${PW}" stroke="${CM}" stroke-width="1.4"/>`
+      + `<circle cx="${x}" cy="${y-23.2}" r="2.1" fill="${CM}"/>`
+      + `<path d="M ${x-3},${y-20.3} h6 v4.6 h-1.9 v4.2 h-2.2 v-4.2 h-1.9 Z" fill="${CM}"/></g>`;
+    case "wcfemale": return `<g>${gnd}`
+      + `<line x1="${x}" y1="${y}" x2="${x}" y2="${y-9}" stroke="${CM}" stroke-width="1.8"/>`
+      + `<rect x="${x-8}" y="${y-27}" width="16" height="18" rx="3" fill="${CR}" stroke="${CM}" stroke-width="1.4"/>`
+      + `<circle cx="${x}" cy="${y-23.2}" r="2.1" fill="${CM}"/>`
+      + `<path d="M ${x-1.7},${y-20.3} h3.4 L ${x+3.6},${y-14.6} h-7.2 Z" fill="${CM}"/>`
+      + `<rect x="${x-1.9}" y="${y-14.6}" width="1.6" height="3.4" fill="${CM}"/>`
+      + `<rect x="${x+0.3}" y="${y-14.6}" width="1.6" height="3.4" fill="${CM}"/></g>`;
   }
   return "";
 }
@@ -1943,7 +1955,8 @@ document.querySelectorAll("#heightGroup .mini").forEach(b=>{
 });
 const STAMP_TYPES = [
   ["tree","木"], ["person","人"], ["arrow","矢印"], ["flag","旗"],
-  ["cross","立入禁止 ×"], ["rope","ロープ"], ["noentry","通行止め"]
+  ["cross","立入禁止 ×"], ["rope","ロープ"], ["noentry","通行止め"],
+  ["wcmale","男子トイレ"], ["wcfemale","女子トイレ"]
 ];
 {
   const sg = document.getElementById("stampGroup");
