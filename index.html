@@ -1512,23 +1512,15 @@ function buildStackedContent(opts){
 
   let body = "";
 
-  // Render bottom floor first, top floor last → top floor appears in front in SVG
-  let labels = "";
-  for(let i=n-1; i>=0; i--){
-    const f = visible[i];
-    const yOff = i*gap;
-    body += `<g transform="translate(0,${yOff})">${renderFloorSVG(f)}</g>`;
-
-    if(!floorLabels) continue;
-    // Collect floor labels separately so they render on top of all floors
-    const lx = Math.ceil(VM.w)+16;
-    const ly = yOff + VM.oy;
-    labels += `<text x="${lx}" y="${ly+4}" font-family="Helvetica,Arial,sans-serif" font-size="22" font-weight="900" fill="#E96A80" opacity="0.95">${esc(f.num)}</text>`;
-    labels += `<text x="${lx}" y="${ly+20}" font-family="Helvetica,Arial,sans-serif" font-size="9" font-weight="700" fill="#A9A7D6" letter-spacing="0.08em">${esc(f.title.slice(0,10).toUpperCase())}</text>`;
-  }
-
-  // Staircase dotted connectors between adjacent visible floors
+  // Staircase dotted connectors between adjacent visible floors.
+  // Stairs on the near half of the map draw on top of the plates as before;
+  // stairs that rotate to the far half slot in behind the upper plate so the
+  // building occludes them naturally.
   const STAIR_COLOR = "#e96a80";
+  const behind = Array(n).fill("");   // drawn just before plate i (hidden by it)
+  const overlay = Array(n).fill("");  // drawn just after plate i (endpoint dots)
+  let frontConn = "";                 // near-side connectors, on top of all plates
+  const depthMid = (COLS/2)*T*VM.sin + (ROWS/2)*T*VM.cos;
   for(let i=0; i<n-1; i++){
     const fUp = visible[i], fDn = visible[i+1];
     const yUp = i*gap, yDn = (i+1)*gap;
@@ -1565,17 +1557,40 @@ function buildStackedContent(opts){
       const ly1=yUp+py(cAvg,rAvg)-tzUp;
       const ly2=yDn+py(cAvg,rAvg)-tzDn;
 
-      // Dashed vertical connector
-      body += `<line x1="${lx.toFixed(1)}" y1="${ly1.toFixed(1)}" x2="${lx.toFixed(1)}" y2="${ly2.toFixed(1)}" `
+      // Dashed vertical connector + endpoint dots
+      const lineSeg = `<line x1="${lx.toFixed(1)}" y1="${ly1.toFixed(1)}" x2="${lx.toFixed(1)}" y2="${ly2.toFixed(1)}" `
             + `stroke="#E96A80" stroke-width="2" stroke-dasharray="6 4.5" stroke-linecap="round" opacity="0.85"/>`;
-      // Endpoint dots
-      body += `<circle cx="${lx.toFixed(1)}" cy="${ly1.toFixed(1)}" r="3" fill="#E96A80" opacity="0.9"/>`;
-      body += `<circle cx="${lx.toFixed(1)}" cy="${ly2.toFixed(1)}" r="3" fill="#E96A80" opacity="0.9"/>`;
+      const dotUp = `<circle cx="${lx.toFixed(1)}" cy="${ly1.toFixed(1)}" r="3" fill="#E96A80" opacity="0.9"/>`;
+      const dotDn = `<circle cx="${lx.toFixed(1)}" cy="${ly2.toFixed(1)}" r="3" fill="#E96A80" opacity="0.9"/>`;
+
+      const isFar = (cAvg*T*VM.sin + rAvg*T*VM.cos) < depthMid;
+      if(isFar){
+        behind[i] += lineSeg;
+        overlay[i] += dotUp;
+        overlay[i+1] += dotDn;
+      }else{
+        frontConn += lineSeg + dotUp + dotDn;
+      }
     }
   }
 
-  // Labels and connectors on top of all floors
-  body += labels;
+  // Render bottom floor first, top floor last → top floor appears in front in SVG
+  let labels = "";
+  for(let i=n-1; i>=0; i--){
+    const f = visible[i];
+    const yOff = i*gap;
+    body += behind[i] + `<g transform="translate(0,${yOff})">${renderFloorSVG(f)}</g>` + overlay[i];
+
+    if(!floorLabels) continue;
+    // Collect floor labels separately so they render on top of all floors
+    const lx = Math.ceil(VM.w)+16;
+    const ly = yOff + VM.oy;
+    labels += `<text x="${lx}" y="${ly+4}" font-family="Helvetica,Arial,sans-serif" font-size="22" font-weight="900" fill="#E96A80" opacity="0.95">${esc(f.num)}</text>`;
+    labels += `<text x="${lx}" y="${ly+20}" font-family="Helvetica,Arial,sans-serif" font-size="9" font-weight="700" fill="#A9A7D6" letter-spacing="0.08em">${esc(f.title.slice(0,10).toUpperCase())}</text>`;
+  }
+
+  // Near-side connectors and labels on top of all floors
+  body += frontConn + labels;
 
   showGrid = savedGrid;
   shadowAmt = savedShadow;
