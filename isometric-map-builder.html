@@ -1082,6 +1082,7 @@ function attachPointer(f){
   const ptrs = new Map();
   let pinch = null, panFrom = null, lpTimer = null, lpStart = null;
   let zoneStart = null;
+  let zonePending = null; // 既存ゾーンをクリックしたとき（ドラッグしなければ編集）
   const cancelLP = ()=>{ if(lpTimer){ clearTimeout(lpTimer); lpTimer = null; } };
   const applyCell = cell=>{
     if(!cell) return;
@@ -1166,8 +1167,15 @@ function attachPointer(f){
       return;
     }
     if(currentTool==="zone"){
-      zoneStart = cell;
-      updateZonePreview(f, cell, cell);
+      const hitZ = findZoneAt(f, cell.c, cell.r);
+      if(hitZ){
+        zonePending = {z: hitZ, x: evt.clientX, y: evt.clientY};
+        zoneStart = null;
+      }else{
+        zoneStart = cell;
+        zonePending = null;
+        updateZonePreview(f, cell, cell);
+      }
       return;
     }
 
@@ -1224,6 +1232,17 @@ function attachPointer(f){
     }
     if(lpTimer && lpStart && Math.hypot(evt.clientX-lpStart.x, evt.clientY-lpStart.y) > 8) cancelLP();
 
+    if(zonePending && currentTool==="zone"){
+      if(Math.hypot(evt.clientX-zonePending.x, evt.clientY-zonePending.y) > 6){
+        const cell = pickCell(f, svgPoint(svg,evt), evt.shiftKey);
+        if(cell){
+          zoneStart = cell;
+          zonePending = null;
+          updateZonePreview(f, zoneStart, cell);
+        }
+      }
+      return;
+    }
     if(zoneStart && currentTool==="zone"){
       const cell = pickCell(f, svgPoint(svg,evt), evt.shiftKey);
       if(cell) updateZonePreview(f, zoneStart, cell);
@@ -1246,20 +1265,29 @@ function attachPointer(f){
     if(evt) ptrs.delete(evt.pointerId);
     if(ptrs.size < 2) pinch = null;
     if(ptrs.size === 0) panFrom = null;
-    // ゾーンツール: ドラッグ完了でゾーン作成
-    if(zoneStart && currentTool==="zone" && evt){
-      const pt = svgPoint(svg, evt);
-      const cell = pickCell(f, pt, false);
-      clearZonePreview(f);
-      if(cell){
-        const c0=Math.min(zoneStart.c,cell.c), r0=Math.min(zoneStart.r,cell.r);
-        const c1=Math.max(zoneStart.c,cell.c), r1=Math.max(zoneStart.r,cell.r);
-        zoneStart = null;
-        openZoneInput(f, c0, r0, c1, r1, null, evt);
+    // ゾーンツール: クリックで既存ゾーン編集 / ドラッグ完了で新規ゾーン作成
+    if(currentTool==="zone" && evt){
+      if(zonePending){
+        const {z} = zonePending;
+        zonePending = null;
+        openZoneInput(f, z.c0, z.r0, z.c1, z.r1, z, evt);
         return;
+      }
+      if(zoneStart){
+        const pt = svgPoint(svg, evt);
+        const cell = pickCell(f, pt, false);
+        clearZonePreview(f);
+        if(cell){
+          const c0=Math.min(zoneStart.c,cell.c), r0=Math.min(zoneStart.r,cell.r);
+          const c1=Math.max(zoneStart.c,cell.c), r1=Math.max(zoneStart.r,cell.r);
+          zoneStart = null;
+          openZoneInput(f, c0, r0, c1, r1, null, evt);
+          return;
+        }
       }
     }
     zoneStart = null;
+    zonePending = null;
     painting = false; last = "";
     cancelLP();
   };
@@ -1268,6 +1296,9 @@ function attachPointer(f){
 }
 
 /* ================= zone editing ================= */
+function findZoneAt(f, c, r){
+  return (f.zones||[]).find(z=>c>=z.c0 && c<=z.c1 && r>=z.r0 && r<=z.r1) || null;
+}
 const ZONE_COLORS = ["#5B80E8","#E8A84A","#4CB87A","#C874C8","#58C4C4"];
 let zoneEd = null;
 function closeZoneEd(){ if(zoneEd){ zoneEd.remove(); zoneEd = null; } }
@@ -1355,8 +1386,15 @@ function openZoneInput(f, c0, r0, c1, r1, existing, evt){
   };
   ok.addEventListener("pointerdown",e=>{ e.preventDefault(); commit(true,false); });
   if(del) del.addEventListener("pointerdown",e=>{ e.preventDefault(); commit(false,true); });
-  input.addEventListener("keydown",e=>{ if(e.key==="Enter") commit(true,false); if(e.key==="Escape") commit(false,false); });
-  input.addEventListener("blur",()=>setTimeout(()=>commit(true,false),0));
+  input.addEventListener("keydown",e=>{
+    if(e.key==="Enter") commit(true,false);
+    if(e.key==="Escape") commit(false,false);
+    if(e.key==="Delete" || e.key==="Backspace"){ if(existing && !input.value && !e.isComposing) commit(false,true); }
+  });
+  input.addEventListener("blur",()=>setTimeout(()=>{
+    if(box.contains(document.activeElement)) return;
+    commit(true,false);
+  },0));
 }
 
 let floatEd = null;
