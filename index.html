@@ -898,13 +898,15 @@ function renderFloorSVG(f){
       const C=[px(c1+1, r1+1),  py(c1+1, r1+1)];
       const D=[px(c0,   r1+1),  py(c0,   r1+1)];
       const pts=[A,B,C,D].map(p=>p[0].toFixed(1)+","+p[1].toFixed(1)).join(" ");
-      // Tint fill
-      out += `<polygon points="${pts}" fill="${color}" opacity="0.09" pointer-events="none"/>`;
+      // Tint fill (積層ビューでは点線枠を描かないぶん、色面を少しだけ濃くする)
+      out += `<polygon points="${pts}" fill="${color}" opacity="${renderingStack ? 0.13 : 0.09}" pointer-events="none"/>`;
+      // Badge and dashed outline are suppressed in stacked view — the per-floor
+      // dashed frames pile up across floors and clutter the drawing; the building
+      // badge + corner guides carry the grouping instead
+      if(renderingStack) continue;
       // Dashed outline
       out += `<polygon points="${pts}" fill="none" stroke="${color}" stroke-width="2.4" `
            + `stroke-dasharray="9 5" stroke-linejoin="round" opacity="0.72" pointer-events="none"/>`;
-      // Badge at topmost corner (suppressed in stacked view — one big badge per building instead)
-      if(renderingStack) continue;
       const topPt = [A,B,C,D].reduce((a,b)=>a[1]<=b[1]?a:b);
       const bx = topPt[0], by = topPt[1] - 14;
       const bw = Math.max(44, [...label].reduce((a,ch)=>a+(ch.charCodeAt(0)>255?11:6.5),0)+18);
