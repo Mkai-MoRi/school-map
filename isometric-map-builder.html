@@ -219,6 +219,28 @@
   }
   .stack-floor-chip.hidden-floor .chip-dot{background:rgba(169,167,214,.4)}
 
+  /* ---------- stacked view: patterns ---------- */
+  .stack-pattern-bar{
+    display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+    padding:10px 0 2px;
+  }
+  .pattern-chip{
+    display:inline-flex;align-items:center;gap:5px;
+    padding:4px 12px;border-radius:999px;cursor:pointer;
+    border:1.5px solid var(--line);background:rgba(43,40,90,.5);
+    font-family:inherit;font-size:11px;font-weight:700;color:var(--cream);
+    transition:border-color .15s,background .15s;user-select:none;
+  }
+  .pattern-chip:hover{border-color:var(--coral)}
+  .pattern-chip.active{background:var(--coral);border-color:var(--coral);color:var(--navy-deep)}
+  .pattern-chip input{
+    border:none;background:transparent;font:inherit;color:inherit;
+    width:96px;outline:none;padding:0;
+  }
+  .stack-ctl-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 0 6px}
+  .stack-ctl-row .act[aria-pressed="true"]{background:var(--coral);border-color:var(--coral);color:var(--navy-deep)}
+  #stackSvgWrap.placing svg{cursor:crosshair}
+
   /* ---------- B2 poster modal ---------- */
   #b2Modal{
     display:none;position:fixed;inset:0;z-index:900;
@@ -234,6 +256,12 @@
   .b2-modal-title{
     font-size:11px;font-weight:800;letter-spacing:.22em;text-transform:uppercase;color:var(--lav);
   }
+  .b2-opts{
+    width:100%;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    padding:8px 20px;background:rgba(27,25,56,.9);
+    border-bottom:1px solid var(--line);flex:none;
+  }
+  .b2-opts .chk{font-size:11px}
   .b2-preview-wrap{
     flex:1;overflow:auto;display:flex;align-items:flex-start;justify-content:center;
     padding:24px 20px;
@@ -349,23 +377,46 @@
     <span class="stack-title">▪ 積層ビュー — 全フロア一棟表示</span>
     <button class="act" id="stackPngBtn">PNG書き出し</button>
     <button class="act" id="stackSvgBtn">SVG書き出し</button>
+    <button class="act" id="b2PosterBtn" style="background:rgba(233,106,128,.18);border-color:#E96A80;color:#E96A80">B2ポスター</button>
     <button class="act" id="stackClose">× 閉じる</button>
   </div>
+  <div class="stack-pattern-bar" id="stackPatternBar"></div>
   <div class="stack-floor-toggles" id="stackFloorToggles">
     <span class="stack-floor-toggle-label">表示フロア:</span>
   </div>
-  <button class="act" id="b2PosterBtn" style="background:rgba(233,106,128,.18);border-color:#E96A80;color:#E96A80">B2ポスター</button>
+  <div class="stack-ctl-row">
+    <button class="act" id="herePlaceBtn" aria-pressed="false" title="オンにしてマップ上のマスをクリックすると、このパターンの現在地マーカーを配置します（同じマスをもう一度クリックで解除）">📍 現在地を置く</button>
+    <button class="act" id="hereClearBtn" title="このパターンの現在地マーカーを外す">現在地クリア</button>
+    <span class="stack-floor-toggle-label" style="margin-left:8px">アイコン凡例:</span>
+    <select id="legendPosSel" class="act" aria-label="アイコン凡例の位置">
+      <option value="none">なし</option>
+      <option value="tl" selected>左上</option>
+      <option value="tr">右上</option>
+      <option value="bl">左下</option>
+      <option value="br">右下</option>
+    </select>
+  </div>
   <div class="stack-svg-wrap" id="stackSvgWrap"></div>
 </section>
 
 <!-- B2 poster modal -->
 <div id="b2Modal" role="dialog" aria-modal="true" aria-label="B2ポスタープレビュー">
   <div class="b2-modal-bar">
-    <span class="b2-modal-title">▪ B2ポスタープレビュー (500×707mm)</span>
+    <span class="b2-modal-title" id="b2ModalTitle">▪ B2ポスタープレビュー (500×707mm)</span>
     <button class="act" id="b2SvgExportBtn">SVG書き出し（ベクター）</button>
     <button class="act" id="b2PngExportBtn">PNG書き出し（印刷用）</button>
     <div class="spacer"></div>
     <button class="act" id="b2CloseBtn">× 閉じる</button>
+  </div>
+  <div class="b2-opts" id="b2OptsBar">
+    <span class="tb-label">表示項目</span>
+    <label class="chk"><input type="checkbox" data-opt="index" checked> フロア索引</label>
+    <label class="chk"><input type="checkbox" data-opt="legend" checked> 色の凡例</label>
+    <label class="chk"><input type="checkbox" data-opt="icons" checked> アイコン凡例</label>
+    <label class="chk"><input type="checkbox" data-opt="desc" checked> 説明文</label>
+    <label class="chk"><input type="checkbox" data-opt="compass" checked> 方位</label>
+    <label class="chk"><input type="checkbox" data-opt="footer" checked> 下部注記欄</label>
+    <label class="chk"><input type="checkbox" data-opt="credit" checked> クレジット</label>
   </div>
   <div class="b2-preview-wrap">
     <svg id="b2PreviewSvg" xmlns="http://www.w3.org/2000/svg"></svg>
@@ -381,6 +432,7 @@
 <footer>
   使い方 — 通常はカーソルが触れている面(ブロックの上面・屋根・壁)が操作対象になり、点線のハイライトで対象マスが表示されます。高いブロックの陰に隠れたマスを操作したいときは、選択を「地面」に切り替えるか、Shiftキーを押しながら操作すると地面グリッド基準の選択になります(ハイライトは最前面に表示されるので、隠れたマスでも選択位置が見えます)。「床」は平らなタイル、「ブロック」は立ち上がった壁・部屋を描きます。「ラベル」でマスをクリックすると部屋名を付けられ、既存のラベルはどのツール中でもクリックすればその場で編集・削除できます。「陰影」「影」スライダーで壁の濃淡と落ち影を調整できます。ブロックは「高さ」で低・中・高を選べ、「屋根」でとんがり屋根のオン/オフ、「スタンプ」で木・人・矢印・旗・立入禁止×・ロープ・通行止めを配置できます(同じ種類をもう一度置くと削除)。ラベルは編集時に「タグ/ピン」で見た目を切り替えられます。
   各フロア右側の番号・タイトル・説明はそのまま編集できます。ツールバーの「回転」「傾き」スライダーで、図をどの角度・高さからでも眺められます(PNG書き出しにも反映)。編集内容は自動保存され、次に開いたとき前回の続きから再開できます(「初期化」でサンプルに戻せます)。「共有リンク」でマップ全体をURLとして共有でき、「保存(JSON)」はバックアップ用です。ピンチ / Ctrl+ホイール / ＋−ボタンでズーム、2本指またはAlt+ドラッグでパン。マップを長押しか右クリックで色のスポイト、「バケツ」で同色の部屋を一括塗り替え(仕切り線で止まります)。「仕切り」ツールでマスの辺をクリックすると同色の部屋の間に間仕切り線を引けます(もう一度で削除)。ラベルにカーソルを乗せる(または編集を開く)と、そのラベルが指す範囲がハイライトされます。書き出しは倍率選択・SVG・フロア単体PNG(各フロアのPNGボタン)に対応。ラベルは編集時に見た目(タグ/ピン/刻印=床に直接書く)、文字サイズ(小/中/大)、ピンの引き出し方向(←/→)を選べます。サイズ「小」のラベルはズーム1.6倍以上で表示されます(教室番号など数が多いものに最適。書き出しには常にすべて含まれます)。
+  積層ビューでは「パターン」を何個でも作れます。パターンごとに表示フロア・現在地マーカー・アイコン凡例の位置を別々に持てるので、「1F掲示用」「3F掲示用」のように現在地だけ変えた版を作って、それぞれPNG/SVG/B2ポスターに書き出せます(「📍 現在地を置く」をオンにしてマップ上のマスをクリックすると配置、同じマスをもう一度クリックで解除)。B2ポスターはプレビュー上部のチェックボックスで、下部注記欄・説明文・方位・索引・凡例などの表示/非表示を調整できます。
 </footer>
 
 <script>
@@ -419,7 +471,26 @@ let uid = 1;
 let stackViewActive = false;
 let renderingStack = false;
 const STACK_GAP = 250;
-const hiddenStackFloors = new Set(); // floor ids hidden in stacked view
+
+// 積層ビューのパターン: 表示フロア・現在地・アイコン凡例の位置をひと組で何通りでも保持
+function newPattern(name){ return {name, hidden:new Set(), here:null, legendPos:"tl"}; }
+let stackPatterns = [newPattern("パターン 1")];
+let activePattern = 0;
+let placingHere = false;   // 積層ビュー上で現在地を配置するモード
+function curPattern(){
+  if(!stackPatterns.length) stackPatterns.push(newPattern("パターン 1"));
+  if(activePattern >= stackPatterns.length) activePattern = stackPatterns.length - 1;
+  return stackPatterns[activePattern];
+}
+// 積層ビュー/B2で使う現在地: パターンの現在地が最優先、無ければフロアの現在地スタンプ
+function hereOf(f){
+  const pat = curPattern();
+  if(pat.here) return pat.here.fid === f.id ? pat.here : null;
+  return (f.stamps||[]).find(s=>s.type==="here") || null;
+}
+
+// B2ポスターの表示項目
+let b2Opts = {index:true, legend:true, icons:true, desc:true, compass:true, footer:true, credit:true};
 
 /* ================= helpers ================= */
 const key = (c,r)=>c+","+r;
@@ -491,6 +562,28 @@ function stampSVG(type, x, y){
       + `<line x1="${x}" y1="${y}" x2="${x}" y2="${y-9}" stroke="${CM}" stroke-width="1.8"/>`
       + `<circle cx="${x}" cy="${y-16}" r="7.5" fill="${RD}" stroke="${CM}" stroke-width="1.6"/>`
       + `<rect x="${x-4.6}" y="${y-17.4}" width="9.2" height="2.8" rx="1.4" fill="${CM}"/></g>`;
+    case "here": return `<g>`
+      + `<ellipse cx="${x}" cy="${y}" rx="9" ry="3.6" fill="${SH}" opacity="0.4"/>`
+      + `<path d="M ${x},${y} C ${x-2.5},${y-7} ${x-9.5},${y-11} ${x-9.5},${y-20} A 9.5 9.5 0 1 1 ${x+9.5},${y-20} C ${x+9.5},${y-11} ${x+2.5},${y-7} ${x},${y} Z" fill="${GD}" stroke="${SH}" stroke-width="2.6" stroke-linejoin="round"/>`
+      + `<circle cx="${x}" cy="${y-20}" r="3.6" fill="${SH}"/></g>`;
+    case "wcmale": return `<g>`
+      + `<ellipse cx="${x}" cy="${y}" rx="8" ry="3" fill="${SH}" opacity="0.32"/>`
+      + `<line x1="${x}" y1="${y}" x2="${x}" y2="${y-12}" stroke="${SH}" stroke-width="4.4" stroke-linecap="round"/>`
+      + `<line x1="${x}" y1="${y}" x2="${x}" y2="${y-12}" stroke="${CM}" stroke-width="2.2" stroke-linecap="round"/>`
+      + `<rect x="${x-13.4}" y="${y-38.4}" width="26.8" height="28.8" rx="6" fill="${SH}" opacity="0.9"/>`
+      + `<rect x="${x-12}" y="${y-37}" width="24" height="26" rx="4.5" fill="${PW}" stroke="${CM}" stroke-width="1.8"/>`
+      + `<circle cx="${x}" cy="${y-31.2}" r="3.2" fill="${CM}"/>`
+      + `<path d="M ${x-4.5},${y-26.6} h9 v7 h-2.9 v6.2 h-3.2 v-6.2 h-2.9 Z" fill="${CM}"/></g>`;
+    case "wcfemale": return `<g>`
+      + `<ellipse cx="${x}" cy="${y}" rx="8" ry="3" fill="${SH}" opacity="0.32"/>`
+      + `<line x1="${x}" y1="${y}" x2="${x}" y2="${y-12}" stroke="${SH}" stroke-width="4.4" stroke-linecap="round"/>`
+      + `<line x1="${x}" y1="${y}" x2="${x}" y2="${y-12}" stroke="${CM}" stroke-width="2.2" stroke-linecap="round"/>`
+      + `<rect x="${x-13.4}" y="${y-38.4}" width="26.8" height="28.8" rx="6" fill="${SH}" opacity="0.9"/>`
+      + `<rect x="${x-12}" y="${y-37}" width="24" height="26" rx="4.5" fill="${CR}" stroke="${CM}" stroke-width="1.8"/>`
+      + `<circle cx="${x}" cy="${y-31.2}" r="3.2" fill="${CM}"/>`
+      + `<path d="M ${x-2.6},${y-26.6} h5.2 L ${x+5.5},${y-18} h-11 Z" fill="${CM}"/>`
+      + `<rect x="${x-2.9}" y="${y-18}" width="2.4" height="4.8" fill="${CM}"/>`
+      + `<rect x="${x+0.5}" y="${y-18}" width="2.4" height="4.8" fill="${CM}"/></g>`;
   }
   return "";
 }
@@ -687,7 +780,13 @@ function renderFloorSVG(f){
       out += `<path d="${loopPathAt(loop, grp.topZ, seed)}" fill="none" stroke="${oc}" stroke-width="1.2" stroke-linejoin="round" opacity="0.85"/>`;
   }
   // stamps (pictograms) — anchored on top of whatever is under them
-  const stampsAll = f.stamps || [];
+  let stampsAll = f.stamps || [];
+  if(renderingStack && curPattern().here){
+    // パターン側で現在地が指定されているときは、フロア側の現在地スタンプを差し替える
+    const ph = curPattern().here;
+    stampsAll = stampsAll.filter(s=>s.type!=="here");
+    if(ph.fid === f.id) stampsAll = stampsAll.concat([{c:ph.c, r:ph.r, type:"here"}]);
+  }
   const others = stampsAll.filter(s=>s.type!=="rope").sort((a,b)=>py(a.c,a.r)-py(b.c,b.r));
   for(const st of others){
     const tz = Math.max(0, topZAt(st.c, st.r));
@@ -799,12 +898,15 @@ function renderFloorSVG(f){
       const C=[px(c1+1, r1+1),  py(c1+1, r1+1)];
       const D=[px(c0,   r1+1),  py(c0,   r1+1)];
       const pts=[A,B,C,D].map(p=>p[0].toFixed(1)+","+p[1].toFixed(1)).join(" ");
-      // Tint fill
-      out += `<polygon points="${pts}" fill="${color}" opacity="0.09" pointer-events="none"/>`;
+      // Tint fill (積層ビューでは点線枠を描かないぶん、色面を少しだけ濃くする)
+      out += `<polygon points="${pts}" fill="${color}" opacity="${renderingStack ? 0.13 : 0.09}" pointer-events="none"/>`;
+      // Badge and dashed outline are suppressed in stacked view — the per-floor
+      // dashed frames pile up across floors and clutter the drawing; the building
+      // badge + corner guides carry the grouping instead
+      if(renderingStack) continue;
       // Dashed outline
       out += `<polygon points="${pts}" fill="none" stroke="${color}" stroke-width="2.4" `
            + `stroke-dasharray="9 5" stroke-linejoin="round" opacity="0.72" pointer-events="none"/>`;
-      // Badge at topmost corner
       const topPt = [A,B,C,D].reduce((a,b)=>a[1]<=b[1]?a:b);
       const bx = topPt[0], by = topPt[1] - 14;
       const bw = Math.max(44, [...label].reduce((a,ch)=>a+(ch.charCodeAt(0)>255?11:6.5),0)+18);
@@ -925,7 +1027,10 @@ function buildFloorsDOM(){
 function floorAction(f, act, idx){
   if(act==="png"){ exportPNG([f], expScaleSel(), ("floor-"+(f.num||"x")).replace(/[^\w\-]/g,"_")+".png"); return; }
   snapshot();
-  if(act==="del"){ hiddenStackFloors.delete(f.id); floors = floors.filter(x=>x!==f); }
+  if(act==="del"){
+    stackPatterns.forEach(p=>{ p.hidden.delete(f.id); if(p.here && p.here.fid===f.id) p.here = null; });
+    floors = floors.filter(x=>x!==f);
+  }
   else if(act==="clear"){ f.cells={}; f.labels=[]; f.stamps=[]; f.walls=[]; f.zones=[]; }
   else if(act==="dup"){
     const copy = JSON.parse(JSON.stringify(f)); copy.id = uid++;
@@ -1103,8 +1208,13 @@ function attachPointer(f){
     else if(currentTool==="stamp"){
       f.stamps = f.stamps || [];
       const i = f.stamps.findIndex(s=>s.c===cell.c && s.r===cell.r);
-      if(i>=0 && f.stamps[i].type===stampType) f.stamps.splice(i,1);   // same type -> remove
-      else if(i>=0) f.stamps[i].type = stampType;
+      const toggleOff = i>=0 && f.stamps[i].type===stampType;   // same type -> remove
+      // 現在地はマップ全体で1つだけ: 置き直すと既存の現在地は全フロアから消える
+      if(stampType==="here")
+        floors.forEach(fl=>{ fl.stamps = (fl.stamps||[]).filter(s=>s.type!=="here"); });
+      const j = f.stamps.findIndex(s=>s.c===cell.c && s.r===cell.r);
+      if(toggleOff){ if(j>=0) f.stamps.splice(j,1); }
+      else if(j>=0) f.stamps[j].type = stampType;
       else f.stamps.push({c:cell.c, r:cell.r, type:stampType});
     }
     else if(currentTool==="erase"){
@@ -1497,7 +1607,8 @@ function buildStackedContent(opts){
   const gap = (opts && opts.gap) || STACK_GAP;
   const floorLabels = !(opts && opts.floorLabels === false);
   VM = viewMetrics();
-  const visible = floors.filter(f => !hiddenStackFloors.has(f.id));
+  const pat = curPattern();
+  const visible = floors.filter(f => !pat.hidden.has(f.id));
   const n = visible.length;
   if(!n) return {body:"", w:100, h:100};
 
@@ -1512,23 +1623,48 @@ function buildStackedContent(opts){
 
   let body = "";
 
-  // Render bottom floor first, top floor last → top floor appears in front in SVG
-  let labels = "";
-  for(let i=n-1; i>=0; i--){
-    const f = visible[i];
-    const yOff = i*gap;
-    body += `<g transform="translate(0,${yOff})">${renderFloorSVG(f)}</g>`;
-
-    if(!floorLabels) continue;
-    // Collect floor labels separately so they render on top of all floors
-    const lx = Math.ceil(VM.w)+16;
-    const ly = yOff + VM.oy;
-    labels += `<text x="${lx}" y="${ly+4}" font-family="Helvetica,Arial,sans-serif" font-size="22" font-weight="900" fill="#E96A80" opacity="0.95">${esc(f.num)}</text>`;
-    labels += `<text x="${lx}" y="${ly+20}" font-family="Helvetica,Arial,sans-serif" font-size="9" font-weight="700" fill="#A9A7D6" letter-spacing="0.08em">${esc(f.title.slice(0,10).toUpperCase())}</text>`;
+  // Building groups: zones sharing a label across floors form one building
+  // (e.g. 本館 / 新館). Vertical corner guides run through the whole stack
+  // behind the plates, and one big badge sits above the top floor.
+  const bldgs = new Map();
+  visible.forEach((f, i) => {
+    (f.zones||[]).forEach(z => {
+      if(!bldgs.has(z.label))
+        bldgs.set(z.label, {label:z.label, color:z.color, c0:z.c0, r0:z.r0, c1:z.c1, r1:z.r1, iMin:i, iMax:i});
+      const b = bldgs.get(z.label);
+      b.c0 = Math.min(b.c0, z.c0); b.r0 = Math.min(b.r0, z.r0);
+      b.c1 = Math.max(b.c1, z.c1); b.r1 = Math.max(b.r1, z.r1);
+      b.iMin = Math.min(b.iMin, i); b.iMax = Math.max(b.iMax, i);
+    });
+  });
+  let bldgLabels = "";
+  for(const b of bldgs.values()){
+    const corners = [[b.c0,b.r0],[b.c1+1,b.r0],[b.c1+1,b.r1+1],[b.c0,b.r1+1]];
+    // 縦の点線ガイドは左右両端の2本だけ(4隅全部だと本数が多すぎて見づらい)
+    const byX = corners.map(([cc,rr])=>({cc,rr,x:px(cc,rr)})).sort((a,c)=>a.x-c.x);
+    const guides = [byX[0], byX[byX.length-1]];
+    const yTop = b.iMin*gap, yBot = b.iMax*gap;
+    for(const {cc,rr} of guides)
+      body += `<line x1="${px(cc,rr).toFixed(1)}" y1="${(yTop+py(cc,rr)-42).toFixed(1)}" `
+            + `x2="${px(cc,rr).toFixed(1)}" y2="${(yBot+py(cc,rr)+8).toFixed(1)}" `
+            + `stroke="${b.color}" stroke-width="1.6" stroke-dasharray="2.5 5" stroke-linecap="round" opacity="0.32"/>`;
+    const bx = px((b.c0+b.c1+1)/2, (b.r0+b.r1+1)/2);
+    const by = yTop + Math.min(...corners.map(([cc,rr])=>py(cc,rr))) - 56;
+    const bw = Math.max(64, [...b.label].reduce((a,ch)=>a+(ch.charCodeAt(0)>255?15:8.5),0)+26);
+    bldgLabels += `<line x1="${bx.toFixed(1)}" y1="${(by+12).toFixed(1)}" x2="${bx.toFixed(1)}" y2="${(by+44).toFixed(1)}" stroke="${b.color}" stroke-width="1.6" stroke-dasharray="2.5 4" opacity="0.75"/>`
+      + `<rect x="${(bx-bw/2).toFixed(1)}" y="${(by-14).toFixed(1)}" width="${bw.toFixed(1)}" height="27" rx="13.5" fill="${b.color}" stroke="#191735" stroke-width="1.6" opacity="0.96"/>`
+      + `<text x="${bx.toFixed(1)}" y="${(by+5.5).toFixed(1)}" font-family="Helvetica,Arial,sans-serif" font-size="14.5" font-weight="900" fill="#F3ECCF" text-anchor="middle" letter-spacing="0.08em">${esc(b.label)}</text>`;
   }
 
-  // Staircase dotted connectors between adjacent visible floors
+  // Staircase dotted connectors between adjacent visible floors.
+  // Stairs on the near half of the map draw on top of the plates as before;
+  // stairs that rotate to the far half slot in behind the upper plate so the
+  // building occludes them naturally.
   const STAIR_COLOR = "#e96a80";
+  const behind = Array(n).fill("");   // drawn just before plate i (hidden by it)
+  const overlay = Array(n).fill("");  // drawn just after plate i (endpoint dots)
+  let frontConn = "";                 // near-side connectors, on top of all plates
+  const depthMid = (COLS/2)*T*VM.sin + (ROWS/2)*T*VM.cos;
   for(let i=0; i<n-1; i++){
     const fUp = visible[i], fDn = visible[i+1];
     const yUp = i*gap, yDn = (i+1)*gap;
@@ -1565,17 +1701,75 @@ function buildStackedContent(opts){
       const ly1=yUp+py(cAvg,rAvg)-tzUp;
       const ly2=yDn+py(cAvg,rAvg)-tzDn;
 
-      // Dashed vertical connector
-      body += `<line x1="${lx.toFixed(1)}" y1="${ly1.toFixed(1)}" x2="${lx.toFixed(1)}" y2="${ly2.toFixed(1)}" `
+      // Dashed vertical connector + endpoint dots
+      const lineSeg = `<line x1="${lx.toFixed(1)}" y1="${ly1.toFixed(1)}" x2="${lx.toFixed(1)}" y2="${ly2.toFixed(1)}" `
             + `stroke="#E96A80" stroke-width="2" stroke-dasharray="6 4.5" stroke-linecap="round" opacity="0.85"/>`;
-      // Endpoint dots
-      body += `<circle cx="${lx.toFixed(1)}" cy="${ly1.toFixed(1)}" r="3" fill="#E96A80" opacity="0.9"/>`;
-      body += `<circle cx="${lx.toFixed(1)}" cy="${ly2.toFixed(1)}" r="3" fill="#E96A80" opacity="0.9"/>`;
+      const dotUp = `<circle cx="${lx.toFixed(1)}" cy="${ly1.toFixed(1)}" r="3" fill="#E96A80" opacity="0.9"/>`;
+      const dotDn = `<circle cx="${lx.toFixed(1)}" cy="${ly2.toFixed(1)}" r="3" fill="#E96A80" opacity="0.9"/>`;
+
+      const isFar = (cAvg*T*VM.sin + rAvg*T*VM.cos) < depthMid;
+      if(isFar){
+        behind[i] += lineSeg;
+        overlay[i] += dotUp;
+        overlay[i+1] += dotDn;
+      }else{
+        frontConn += lineSeg + dotUp + dotDn;
+      }
     }
   }
 
-  // Labels and connectors on top of all floors
-  body += labels;
+  // Render bottom floor first, top floor last → top floor appears in front in SVG
+  let labels = "";
+  for(let i=n-1; i>=0; i--){
+    const f = visible[i];
+    const yOff = i*gap;
+    body += behind[i] + `<g transform="translate(0,${yOff})">${renderFloorSVG(f)}</g>` + overlay[i];
+
+    if(!floorLabels) continue;
+    // Collect floor labels separately so they render on top of all floors
+    const lx = Math.ceil(VM.w)+16;
+    const ly = yOff + VM.oy;
+    labels += `<text x="${lx}" y="${ly+4}" font-family="Helvetica,Arial,sans-serif" font-size="22" font-weight="900" fill="#E96A80" opacity="0.95">${esc(f.num)}</text>`;
+    labels += `<text x="${lx}" y="${ly+20}" font-family="Helvetica,Arial,sans-serif" font-size="9" font-weight="700" fill="#A9A7D6" letter-spacing="0.08em">${esc(f.title.slice(0,10).toUpperCase())}</text>`;
+    if(hereOf(f)){
+      labels += `<rect x="${lx-4}" y="${ly+28}" width="60" height="17" rx="8.5" fill="#E9B45B"/>`;
+      labels += `<text x="${lx+26}" y="${ly+40.5}" font-family="Helvetica,Arial,sans-serif" font-size="10" font-weight="900" fill="#23214A" text-anchor="middle" letter-spacing="0.06em">▶ 現在地</text>`;
+    }
+  }
+
+  // Near-side connectors, labels and building badges on top of all floors
+  body += frontConn + labels + bldgLabels;
+
+  // 現在地 highlight: pulsing ground rings + callout tag above the pin
+  for(let i=0;i<n;i++){
+    const f = visible[i];
+    const here = hereOf(f);
+    if(!here) continue;
+    const c0 = f.cells[key(here.c,here.r)];
+    const tz = c0 ? (H_OF[c0.kind]||0) : 0;
+    const hx = px(here.c+0.5, here.r+0.5);
+    const hy = i*gap + py(here.c+0.5, here.r+0.5) - tz;
+    body += `<ellipse cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" rx="9" ry="3.6" fill="none" stroke="#E9B45B" stroke-width="1.6" opacity="0.6"/>`
+          + `<ellipse cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" rx="9" ry="3.6" fill="none" stroke="#E9B45B" stroke-width="2">`
+          + `<animate attributeName="rx" values="9;22" dur="1.6s" repeatCount="indefinite"/>`
+          + `<animate attributeName="ry" values="3.6;8.8" dur="1.6s" repeatCount="indefinite"/>`
+          + `<animate attributeName="opacity" values="0.85;0" dur="1.6s" repeatCount="indefinite"/></ellipse>`;
+    const tagW = 66, tagH = 21, tx = hx - tagW/2, ty = hy - 72;
+    body += `<line x1="${hx.toFixed(1)}" y1="${(hy-32).toFixed(1)}" x2="${hx.toFixed(1)}" y2="${ty+tagH}" stroke="#E9B45B" stroke-width="1.6" stroke-dasharray="3 2.5" opacity="0.9"/>`
+          + `<rect x="${tx.toFixed(1)}" y="${ty}" width="${tagW}" height="${tagH}" rx="10.5" fill="#E9B45B" stroke="#191735" stroke-width="1.8"/>`
+          + `<text x="${hx.toFixed(1)}" y="${ty+15}" font-family="Helvetica,Arial,sans-serif" font-size="11.5" font-weight="900" fill="#23214A" text-anchor="middle" letter-spacing="0.1em">現在地</text>`;
+  }
+
+  // アイコン凡例 — パターンごとに選んだ隅に置く(B2ポスターは左カラムに独自に描くので抑制)
+  if(!(opts && opts.iconLegend === false) && (pat.legendPos || "tl") !== "none"){
+    const items = usedStampTypes(visible);
+    if(items.length){
+      const lg = iconLegendSVG(items);
+      const lx = (pat.legendPos === "tr" || pat.legendPos === "br") ? totalW - lg.w - 6 : 6;
+      const ly = (pat.legendPos === "bl" || pat.legendPos === "br") ? totalH - lg.h - 6 : 6;
+      body += `<g transform="translate(${lx},${ly})">${lg.g}</g>`;
+    }
+  }
 
   showGrid = savedGrid;
   shadowAmt = savedShadow;
@@ -1584,31 +1778,126 @@ function buildStackedContent(opts){
   return {body, w:totalW, h:totalH};
 }
 
+// 表示中フロアで実際に使われているスタンプ種類(凡例に載せる分だけ)
+function usedStampTypes(visible){
+  const pat = curPattern();
+  const used = new Set();
+  visible.forEach(f=>(f.stamps||[]).forEach(s=>{
+    if(pat.here && s.type==="here") return;   // パターン側で差し替え済み
+    used.add(s.type);
+  }));
+  if(pat.here && visible.some(f=>f.id===pat.here.fid)) used.add("here");
+  return STAMP_TYPES.filter(([t])=>used.has(t));
+}
+
+// スタンプの説明ボックス(積層ビュー・書き出しに含まれる)
+function iconLegendSVG(items){
+  const FONT = "Helvetica,Arial,'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif";
+  const rowH = 34, padT = 30, padB = 10;
+  const textW = t => [...t].reduce((a,ch)=>a+(ch.charCodeAt(0)>255?11:6.5),0);
+  const w = Math.max(118, 56 + Math.max(...items.map(([,name])=>textW(name))));
+  const h = padT + items.length*rowH + padB;
+  let g = `<rect x="0" y="0" width="${w}" height="${h}" rx="12" fill="#1B1938" opacity="0.9" stroke="#413E6E" stroke-width="1.4"/>`;
+  g += `<rect x="12" y="13" width="10" height="2.4" rx="1.2" fill="#E96A80"/>`;
+  g += `<text x="28" y="18" font-family="${FONT}" font-size="9" font-weight="800" fill="#A9A7D6" letter-spacing="0.18em">アイコン凡例</text>`;
+  items.forEach(([t,name],i)=>{
+    const rowTop = padT + i*rowH;
+    g += `<g transform="translate(22,${rowTop+28}) scale(0.7)">${stampSVG(t,0,0)}</g>`;
+    g += `<text x="42" y="${rowTop+19}" font-family="${FONT}" font-size="11" font-weight="700" fill="#F3ECCF">${esc(name)}</text>`;
+  });
+  return {g, w, h};
+}
+
 function updateStackView(){
   const wrap = document.getElementById("stackSvgWrap");
   if(!wrap || !stackViewActive) return;
+  updateStackPatternBar();
   updateStackFloorToggles();
+  const sel = document.getElementById("legendPosSel");
+  if(sel) sel.value = curPattern().legendPos || "tl";
   const {body, w, h} = buildStackedContent();
   wrap.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" `
     + `style="width:100%;height:auto;display:block" role="img" aria-label="全フロア積層ビュー">${body}</svg>`;
 }
 
+function updateStackPatternBar(){
+  const bar = document.getElementById("stackPatternBar");
+  if(!bar) return;
+  bar.innerHTML = '<span class="stack-floor-toggle-label">パターン:</span>';
+  stackPatterns.forEach((p, i) => {
+    const active = i === activePattern;
+    const chip = document.createElement("span");
+    chip.className = "pattern-chip" + (active ? " active" : "");
+    if(active){
+      // アクティブなパターンは名前をその場で編集できる
+      const inp = document.createElement("input");
+      inp.value = p.name;
+      inp.setAttribute("aria-label", "パターン名");
+      inp.addEventListener("input", ()=>{ p.name = inp.value; autosave(); });
+      chip.appendChild(inp);
+    }else{
+      chip.textContent = p.name || "パターン " + (i+1);
+      chip.setAttribute("role", "button");
+      chip.setAttribute("title", "クリックして切り替え");
+      chip.addEventListener("click", ()=>{ activePattern = i; placingHere = false; syncHerePlaceBtn(); updateStackView(); autosave(); });
+    }
+    bar.appendChild(chip);
+  });
+
+  const addBtn = document.createElement("button");
+  addBtn.className = "stack-floor-chip";
+  addBtn.textContent = "＋ パターン追加";
+  addBtn.title = "現在のパターンを複製して追加";
+  addBtn.addEventListener("click", ()=>{
+    const src = curPattern();
+    const copy = newPattern("パターン " + (stackPatterns.length + 1));
+    copy.hidden = new Set(src.hidden);
+    copy.here = src.here ? {...src.here} : null;
+    copy.legendPos = src.legendPos;
+    stackPatterns.push(copy);
+    activePattern = stackPatterns.length - 1;
+    updateStackView(); autosave();
+  });
+  bar.appendChild(addBtn);
+
+  if(stackPatterns.length > 1){
+    const delBtn = document.createElement("button");
+    delBtn.className = "stack-floor-chip";
+    delBtn.style.cssText = "opacity:.75";
+    delBtn.textContent = "✕ 削除";
+    delBtn.title = "表示中のパターンを削除(2回クリック)";
+    delBtn.addEventListener("click", ()=>{
+      if(delBtn.dataset.armed){
+        stackPatterns.splice(activePattern, 1);
+        activePattern = Math.max(0, activePattern - 1);
+        updateStackView(); autosave();
+      }else{
+        delBtn.dataset.armed = "1";
+        delBtn.textContent = "本当に削除?";
+        setTimeout(()=>{ delete delBtn.dataset.armed; delBtn.textContent = "✕ 削除"; }, 3000);
+      }
+    });
+    bar.appendChild(delBtn);
+  }
+}
+
 function updateStackFloorToggles(){
   const container = document.getElementById("stackFloorToggles");
   if(!container) return;
+  const pat = curPattern();
   // preserve label
   container.innerHTML = '<span class="stack-floor-toggle-label">表示フロア:</span>';
   floors.forEach(f => {
-    const hidden = hiddenStackFloors.has(f.id);
+    const hidden = pat.hidden.has(f.id);
     const chip = document.createElement("button");
     chip.className = "stack-floor-chip" + (hidden ? " hidden-floor" : "");
     chip.setAttribute("aria-pressed", String(!hidden));
     chip.setAttribute("title", hidden ? "クリックして表示" : "クリックして非表示");
     chip.innerHTML = `<span class="chip-dot"></span>${esc(f.num || "?")}${f.title ? " " + esc(f.title.slice(0,8)) : ""}`;
     chip.addEventListener("click", () => {
-      if(hiddenStackFloors.has(f.id)) hiddenStackFloors.delete(f.id);
-      else hiddenStackFloors.add(f.id);
-      updateStackView();
+      if(pat.hidden.has(f.id)) pat.hidden.delete(f.id);
+      else pat.hidden.add(f.id);
+      updateStackView(); autosave();
     });
     container.appendChild(chip);
   });
@@ -1624,10 +1913,57 @@ function updateStackFloorToggles(){
     showAll.className = "stack-floor-chip";
     showAll.style.cssText = "font-size:10px;padding:3px 8px;opacity:.7";
     showAll.textContent = "全表示";
-    showAll.addEventListener("click", () => { hiddenStackFloors.clear(); updateStackView(); });
+    showAll.addEventListener("click", () => { pat.hidden.clear(); updateStackView(); autosave(); });
     container.appendChild(showAll);
   }
 }
+
+/* --- 現在地の配置(積層ビュー上でクリック) --- */
+function syncHerePlaceBtn(){
+  const btn = document.getElementById("herePlaceBtn");
+  if(btn) btn.setAttribute("aria-pressed", placingHere ? "true" : "false");
+  const wrap = document.getElementById("stackSvgWrap");
+  if(wrap) wrap.classList.toggle("placing", placingHere);
+}
+document.getElementById("herePlaceBtn").addEventListener("click", ()=>{
+  placingHere = !placingHere;
+  syncHerePlaceBtn();
+});
+document.getElementById("hereClearBtn").addEventListener("click", ()=>{
+  curPattern().here = null;
+  placingHere = false; syncHerePlaceBtn();
+  updateStackView(); autosave();
+});
+document.getElementById("legendPosSel").addEventListener("change", e=>{
+  curPattern().legendPos = e.target.value;
+  updateStackView(); autosave();
+});
+document.getElementById("stackSvgWrap").addEventListener("click", e=>{
+  if(!placingHere) return;
+  const svg = e.currentTarget.querySelector("svg");
+  if(!svg) return;
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX; pt.y = e.clientY;
+  const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+  const pat = curPattern();
+  const visible = floors.filter(f => !pat.hidden.has(f.id));
+  VM = viewMetrics();
+  let hit = null;
+  // 手前(上)のフロアから順にヒットテスト。マップが描かれているマスを優先する
+  for(let i=0; i<visible.length && !hit; i++){
+    const p2 = {x:p.x, y:p.y - i*STACK_GAP};
+    if(p2.y < -TOP_ROOM || p2.y > VM.h) continue;
+    const cell = pickCell(visible[i], p2, false);
+    if(cell && cell.c>=0 && cell.c<COLS && cell.r>=0 && cell.r<ROWS && visible[i].cells[key(cell.c,cell.r)])
+      hit = {fid: visible[i].id, c: cell.c, r: cell.r};
+  }
+  if(!hit) return;
+  // 同じマスをもう一度クリックしたら解除
+  if(pat.here && pat.here.fid===hit.fid && pat.here.c===hit.c && pat.here.r===hit.r) pat.here = null;
+  else pat.here = hit;
+  placingHere = false; syncHerePlaceBtn();
+  updateStackView(); autosave();
+});
 
 function toggleStackView(on){
   stackViewActive = (on!==undefined) ? on : !stackViewActive;
@@ -1639,6 +1975,8 @@ function toggleStackView(on){
     document.getElementById("stack-view").scrollIntoView({behavior:"smooth", block:"start"});
   }
 }
+
+function fileSafe(s){ return String(s).replace(/[\\\/:*?"<>|\s]+/g,"_").replace(/^_+|_+$/g,"") || "map"; }
 
 function exportStackedPNG(scale){
   const {body, w, h} = buildStackedContent();
@@ -1656,7 +1994,7 @@ function exportStackedPNG(scale){
     const ctx = cv.getContext("2d");
     ctx.scale(scale,scale); ctx.drawImage(img,0,0);
     URL.revokeObjectURL(url);
-    cv.toBlob(b=>download("stacked-map.png",b),"image/png");
+    cv.toBlob(b=>download("stacked-"+fileSafe(curPattern().name)+".png",b),"image/png");
   };
   img.src = url;
 }
@@ -1664,7 +2002,7 @@ function exportStackedPNG(scale){
 /* ================= B2 poster ================= */
 function buildB2PosterSVG(){
   const title = document.getElementById("mapTitle").textContent.trim() || "MAP";
-  const visible = floors.filter(f => !hiddenStackFloors.has(f.id));
+  const visible = floors.filter(f => !curPattern().hidden.has(f.id));
   const n = Math.max(visible.length, 1);
 
   // Canvas: B2 proportions (1000×1414 units = 500mm×707mm)
@@ -1673,16 +2011,15 @@ function buildB2PosterSVG(){
   const FONT = `'Helvetica Neue',Helvetica,Arial,'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,sans-serif`;
   const CORAL = "#E96A80", CREAM = "#F3ECCF", LAV = "#A9A7D6", LINE = "#413E6E";
 
-  // Flatten the camera for the poster so the exploded floors read like plates
-  const savedTilt = viewTilt;
-  viewTilt = Math.min(viewTilt, 0.4);
+  // Use the angle/tilt currently selected in the view
   const vm0 = viewMetrics();
   const mw = Math.ceil(vm0.w);
   const fh = Math.ceil(vm0.h);          // single-floor plate height (unscaled)
 
   // Layout zones: left column (index+legend), big floor labels, exploded map
   const footBoxH = 84;
-  const footTop = H - M - footBoxH - 26;
+  // 下部注記欄をオフにしたときはマップ領域を下まで広げる
+  const footTop = b2Opts.footer ? H - M - footBoxH - 26 : H - M + 6;
   const leftX = M, leftW = 152;
   const labelX = leftX + leftW + 12;
   const mapX = 296;
@@ -1694,8 +2031,7 @@ function buildB2PosterSVG(){
   const fitScale = Math.min(mapW / mw, mapH / (fh + (n - 1) * fh * 0.5));
   const gap = n > 1 ? (mapH / fitScale - fh) / (n - 1) : 0;
 
-  const {body, w: sw} = buildStackedContent({gap, floorLabels: false});
-  viewTilt = savedTilt;
+  const {body, w: sw} = buildStackedContent({gap, floorLabels: false, iconLegend: false});
 
   const mapOffX = mapX + (mapW - sw * fitScale) / 2;
   const mapOffY = mapY;
@@ -1744,14 +2080,18 @@ function buildB2PosterSVG(){
 
   // English subtitle + short description
   s += `<text x="${M}" y="${titleY + 38}" font-family="${FONT}" font-size="10" font-weight="700" fill="${CORAL}" letter-spacing="0.32em">SCHOOL ISOMETRIC FLOOR MAP</text>`;
-  s += `<text x="${M}" y="${titleY + 60}" font-family="${FONT}" font-size="8.5" fill="${LAV}" opacity="0.85">校舎を上から順にフロアごとに分解して並べた案内図です。</text>`;
-  s += `<text x="${M}" y="${titleY + 74}" font-family="${FONT}" font-size="8.5" fill="${LAV}" opacity="0.85">各フロアの部屋の配置と、階段のつながりをひと目で確認できます。</text>`;
+  if(b2Opts.desc){
+    s += `<text x="${M}" y="${titleY + 60}" font-family="${FONT}" font-size="8.5" fill="${LAV}" opacity="0.85">校舎を上から順にフロアごとに分解して並べた案内図です。</text>`;
+    s += `<text x="${M}" y="${titleY + 74}" font-family="${FONT}" font-size="8.5" fill="${LAV}" opacity="0.85">各フロアの部屋の配置と、階段のつながりをひと目で確認できます。</text>`;
+  }
 
   // Compass (decorative, top-right)
-  const ccx = W - M - 20, ccy = M + 20;
-  s += `<circle cx="${ccx}" cy="${ccy}" r="16" fill="none" stroke="${LAV}" stroke-width="1" opacity="0.55"/>`;
-  s += `<path d="M${ccx} ${ccy - 11} L${ccx + 4.5} ${ccy + 4} L${ccx} ${ccy + 1} L${ccx - 4.5} ${ccy + 4} Z" fill="${CORAL}" opacity="0.9"/>`;
-  s += `<text x="${ccx}" y="${ccy + 13.5}" font-family="${FONT}" font-size="7" font-weight="800" fill="${LAV}" text-anchor="middle" opacity="0.8">N</text>`;
+  if(b2Opts.compass){
+    const ccx = W - M - 20, ccy = M + 20;
+    s += `<circle cx="${ccx}" cy="${ccy}" r="16" fill="none" stroke="${LAV}" stroke-width="1" opacity="0.55"/>`;
+    s += `<path d="M${ccx} ${ccy - 11} L${ccx + 4.5} ${ccy + 4} L${ccx} ${ccy + 1} L${ccx - 4.5} ${ccy + 4} Z" fill="${CORAL}" opacity="0.9"/>`;
+    s += `<text x="${ccx}" y="${ccy + 13.5}" font-family="${FONT}" font-size="7" font-weight="800" fill="${LAV}" text-anchor="middle" opacity="0.8">N</text>`;
+  }
 
   // Small caps section heading with coral tick
   const secHead = (x, y, en, jp) =>
@@ -1761,36 +2101,57 @@ function buildB2PosterSVG(){
 
   // ── Left column: floor index ──────────────────────────
   const idxY = titleY + 108;
-  s += secHead(leftX, idxY, "FLOOR INDEX", "索引");
-  let cy2 = idxY + 18;
-  visible.forEach(f => {
-    s += `<rect x="${leftX}" y="${cy2}" width="22" height="22" rx="6" fill="${CORAL}" opacity="0.16"/>`;
-    s += `<rect x="${leftX}" y="${cy2}" width="22" height="22" rx="6" fill="none" stroke="${CORAL}" stroke-width="1" opacity="0.6"/>`;
-    s += `<text x="${leftX + 11}" y="${cy2 + 15.5}" font-family="${FONT}" font-size="12" font-weight="900" fill="${CORAL}" text-anchor="middle">${esc((f.num || "?").slice(0, 2))}</text>`;
-    s += `<text x="${leftX + 30}" y="${cy2 + 15}" font-family="${FONT}" font-size="9.5" font-weight="700" fill="${CREAM}" opacity="0.9">${esc((f.title || "").slice(0, 12))}</text>`;
-    cy2 += 32;
-  });
+  let cy2 = idxY;
+  if(b2Opts.index){
+    s += secHead(leftX, cy2, "FLOOR INDEX", "索引");
+    cy2 += 18;
+    visible.forEach(f => {
+      s += `<rect x="${leftX}" y="${cy2}" width="22" height="22" rx="6" fill="${CORAL}" opacity="0.16"/>`;
+      s += `<rect x="${leftX}" y="${cy2}" width="22" height="22" rx="6" fill="none" stroke="${CORAL}" stroke-width="1" opacity="0.6"/>`;
+      s += `<text x="${leftX + 11}" y="${cy2 + 15.5}" font-family="${FONT}" font-size="12" font-weight="900" fill="${CORAL}" text-anchor="middle">${esc((f.num || "?").slice(0, 2))}</text>`;
+      s += `<text x="${leftX + 30}" y="${cy2 + 15}" font-family="${FONT}" font-size="9.5" font-weight="700" fill="${CREAM}" opacity="0.9">${esc((f.title || "").slice(0, 12))}</text>`;
+      cy2 += 32;
+    });
+    cy2 += 18;
+  }
 
   // ── Left column: legend (colors actually used) ────────
-  const usedColors = new Set();
-  visible.forEach(f => Object.values(f.cells).forEach(c => usedColors.add(c.color.toUpperCase())));
-  const legendItems = PALETTE.filter(([hex]) => usedColors.has(hex.toUpperCase()));
-  cy2 += 18;
-  if(legendItems.length){
-    s += secHead(leftX, cy2, "LEGEND", "凡例");
-    cy2 += 16;
-    legendItems.forEach(([hex, name]) => {
-      s += `<rect x="${leftX + 1}" y="${cy2}" width="13" height="13" rx="4" fill="${hex}"/>`;
-      s += `<rect x="${leftX + 1}" y="${cy2}" width="13" height="13" rx="4" fill="none" stroke="${CREAM}" stroke-width="0.5" opacity="0.25"/>`;
-      s += `<text x="${leftX + 22}" y="${cy2 + 10.5}" font-family="${FONT}" font-size="8.5" font-weight="600" fill="${LAV}" opacity="0.9">${esc(name)}</text>`;
-      cy2 += 21;
-    });
+  if(b2Opts.legend){
+    const usedColors = new Set();
+    visible.forEach(f => Object.values(f.cells).forEach(c => usedColors.add(c.color.toUpperCase())));
+    const legendItems = PALETTE.filter(([hex]) => usedColors.has(hex.toUpperCase()));
+    if(legendItems.length){
+      s += secHead(leftX, cy2, "LEGEND", "凡例");
+      cy2 += 16;
+      legendItems.forEach(([hex, name]) => {
+        s += `<rect x="${leftX + 1}" y="${cy2}" width="13" height="13" rx="4" fill="${hex}"/>`;
+        s += `<rect x="${leftX + 1}" y="${cy2}" width="13" height="13" rx="4" fill="none" stroke="${CREAM}" stroke-width="0.5" opacity="0.25"/>`;
+        s += `<text x="${leftX + 22}" y="${cy2 + 10.5}" font-family="${FONT}" font-size="8.5" font-weight="600" fill="${LAV}" opacity="0.9">${esc(name)}</text>`;
+        cy2 += 21;
+      });
+    }
+    if(n > 1){
+      cy2 += 8;
+      s += `<line x1="${leftX + 1}" y1="${cy2 + 6}" x2="${leftX + 14}" y2="${cy2 + 6}" stroke="${CORAL}" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="round" opacity="0.9"/>`;
+      s += `<circle cx="${leftX + 1}" cy="${cy2 + 6}" r="2.2" fill="${CORAL}"/><circle cx="${leftX + 14}" cy="${cy2 + 6}" r="2.2" fill="${CORAL}"/>`;
+      s += `<text x="${leftX + 22}" y="${cy2 + 9.5}" font-family="${FONT}" font-size="8.5" font-weight="600" fill="${LAV}" opacity="0.9">階段どうしの接続</text>`;
+      cy2 += 16;
+    }
+    cy2 += 18;
   }
-  if(n > 1){
-    cy2 += 8;
-    s += `<line x1="${leftX + 1}" y1="${cy2 + 6}" x2="${leftX + 14}" y2="${cy2 + 6}" stroke="${CORAL}" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="round" opacity="0.9"/>`;
-    s += `<circle cx="${leftX + 1}" cy="${cy2 + 6}" r="2.2" fill="${CORAL}"/><circle cx="${leftX + 14}" cy="${cy2 + 6}" r="2.2" fill="${CORAL}"/>`;
-    s += `<text x="${leftX + 22}" y="${cy2 + 9.5}" font-family="${FONT}" font-size="8.5" font-weight="600" fill="${LAV}" opacity="0.9">階段どうしの接続</text>`;
+
+  // ── Left column: icon legend (stamps actually used) ───
+  if(b2Opts.icons){
+    const iconItems = usedStampTypes(visible);
+    if(iconItems.length){
+      s += secHead(leftX, cy2, "ICONS", "アイコン");
+      cy2 += 12;
+      iconItems.forEach(([t, name]) => {
+        s += `<g transform="translate(${leftX + 9},${cy2 + 22}) scale(0.58)">${stampSVG(t, 0, 0)}</g>`;
+        s += `<text x="${leftX + 22}" y="${cy2 + 17}" font-family="${FONT}" font-size="8.5" font-weight="600" fill="${LAV}" opacity="0.9">${esc(name)}</text>`;
+        cy2 += 26;
+      });
+    }
   }
 
   // ── Exploded floor stack ──────────────────────────────
@@ -1807,11 +2168,17 @@ function buildB2PosterSVG(){
     s += `<rect x="${labelX + 2}" y="${(lyC + 10).toFixed(1)}" width="30" height="2.6" rx="1.3" fill="${CORAL}" opacity="0.55"/>`;
     if(f.title)
       s += `<text x="${labelX + 2}" y="${(lyC + 30).toFixed(1)}" font-family="${FONT}" font-size="11" font-weight="800" fill="${CREAM}" opacity="0.92">${esc(f.title.slice(0, 9))}</text>`;
+    if(hereOf(f)){
+      const by = lyC + (f.title ? 38 : 16);
+      s += `<rect x="${labelX + 2}" y="${by.toFixed(1)}" width="62" height="18" rx="9" fill="#E9B45B"/>`;
+      s += `<text x="${labelX + 33}" y="${(by + 13).toFixed(1)}" font-family="${FONT}" font-size="10" font-weight="900" fill="#23214A" text-anchor="middle" letter-spacing="0.08em">▶ 現在地</text>`;
+    }
   });
 
   // ── Footer note boxes ─────────────────────────────────
   const now = new Date();
   const ds = `${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')}`;
+  if(b2Opts.footer){
   const boxGap = 14;
   const boxW = (W - M * 2 - boxGap * 2) / 3;
   const noteBox = (bx, headJP, lines, sample) => {
@@ -1832,9 +2199,11 @@ function buildB2PosterSVG(){
     bx => ["#E96A80","#F4ECC9","#8B8FD0","#4C4E90"].map((c, i) =>
       `<rect x="${bx + 14 + i * 16}" y="${footTop + 62}" width="11" height="11" rx="3" fill="${c}"/>`).join(""));
   s += noteBox(M + (boxW + boxGap) * 2, "マップ情報", [esc(title) + `　全${visible.length}フロア`, `発行 ${ds}`, "B2  500 × 707 mm"]);
+  }
 
   // Bottom credit
-  s += `<text x="${W / 2}" y="${H - M + 24}" font-family="${FONT}" font-size="7" fill="${LAV}" opacity="0.5" text-anchor="middle" letter-spacing="0.22em">SCHOOL ISOMETRIC FLOOR MAP ・ ${ds}</text>`;
+  if(b2Opts.credit)
+    s += `<text x="${W / 2}" y="${H - M + 24}" font-family="${FONT}" font-size="7" fill="${LAV}" opacity="0.5" text-anchor="middle" letter-spacing="0.22em">SCHOOL ISOMETRIC FLOOR MAP ・ ${ds}</text>`;
 
   s += `</svg>`;
   return {svg: s, W, H};
@@ -1843,6 +2212,9 @@ function buildB2PosterSVG(){
 function showB2Preview(){
   const {svg, W, H} = buildB2PosterSVG();
   const modal = document.getElementById("b2Modal");
+  const tEl = document.getElementById("b2ModalTitle");
+  if(tEl) tEl.textContent = `▪ B2ポスタープレビュー (500×707mm) — ${curPattern().name}`;
+  document.querySelectorAll("#b2OptsBar input[data-opt]").forEach(cb=>{ cb.checked = !!b2Opts[cb.dataset.opt]; });
   const previewEl = document.getElementById("b2PreviewSvg");
   // Replace the preview SVG element's content
   const tmp = document.createElement("div");
@@ -1860,7 +2232,7 @@ function showB2Preview(){
 function exportB2SVG(){
   const {svg} = buildB2PosterSVG();
   const title = document.getElementById("mapTitle").textContent.trim() || "map";
-  download(title.replace(/[^\w\-]/g,"_") + "-B2.svg", new Blob([svg], {type:"image/svg+xml"}));
+  download(fileSafe(title) + "-" + fileSafe(curPattern().name) + "-B2.svg", new Blob([svg], {type:"image/svg+xml"}));
 }
 
 function exportB2PNG(){
@@ -1877,7 +2249,7 @@ function exportB2PNG(){
     ctx.drawImage(img, 0, 0);
     URL.revokeObjectURL(url);
     const title = document.getElementById("mapTitle").textContent.trim() || "map";
-    cv.toBlob(b => download(title.replace(/[^\w\-]/g,"_") + "-B2-print.png", b), "image/png");
+    cv.toBlob(b => download(fileSafe(title) + "-" + fileSafe(curPattern().name) + "-B2-print.png", b), "image/png");
   };
   img.src = url;
 }
@@ -1931,7 +2303,8 @@ document.querySelectorAll("#heightGroup .mini").forEach(b=>{
 });
 const STAMP_TYPES = [
   ["tree","木"], ["person","人"], ["arrow","矢印"], ["flag","旗"],
-  ["cross","立入禁止 ×"], ["rope","ロープ"], ["noentry","通行止め"]
+  ["cross","立入禁止 ×"], ["rope","ロープ"], ["noentry","通行止め"],
+  ["wcmale","男子トイレ"], ["wcfemale","女子トイレ"], ["here","現在地"]
 ];
 {
   const sg = document.getElementById("stampGroup");
@@ -1940,7 +2313,8 @@ const STAMP_TYPES = [
     b.className = "mini icon"; b.dataset.s = t;
     b.title = name; b.setAttribute("aria-label","スタンプ: "+name);
     b.setAttribute("aria-pressed", i===0 ? "true" : "false");
-    b.innerHTML = `<svg viewBox="-14 -31 28 36" width="20" height="24" aria-hidden="true">${stampSVG(t,0,0)}</svg>`;
+    const vb = t.startsWith("wc") ? "-16 -41 32 46" : "-14 -31 28 36";
+    b.innerHTML = `<svg viewBox="${vb}" width="20" height="24" aria-hidden="true">${stampSVG(t,0,0)}</svg>`;
     b.addEventListener("click", ()=>{
       stampType = t;
       sg.querySelectorAll(".mini").forEach(x=>x.setAttribute("aria-pressed", x===b ? "true":"false"));
@@ -1997,6 +2371,12 @@ document.getElementById("b2PosterBtn").addEventListener("click", ()=>showB2Previ
 document.getElementById("b2CloseBtn").addEventListener("click", ()=>document.getElementById("b2Modal").classList.remove("open"));
 document.getElementById("b2SvgExportBtn").addEventListener("click", exportB2SVG);
 document.getElementById("b2PngExportBtn").addEventListener("click", exportB2PNG);
+document.querySelectorAll("#b2OptsBar input[data-opt]").forEach(cb=>{
+  cb.addEventListener("change", ()=>{
+    b2Opts[cb.dataset.opt] = cb.checked;
+    showB2Preview(); autosave();
+  });
+});
 document.getElementById("b2Modal").addEventListener("click", e=>{
   if(e.target === document.getElementById("b2Modal")) document.getElementById("b2Modal").classList.remove("open");
 });
@@ -2009,7 +2389,7 @@ document.getElementById("stackSvgBtn").addEventListener("click", ()=>{
     dots += `<circle cx="${(i*137+31)%w}" cy="${(i*89+47)%h}" r="${i%3?1:1.6}" fill="${i%4?"#F3ECCF":"#E96A80"}" opacity="0.3"/>`;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
     + `<rect width="${w}" height="${h}" fill="#23214A"/>${dots}${body}</svg>`;
-  download("stacked-map.svg", new Blob([svg],{type:"image/svg+xml"}));
+  download("stacked-"+fileSafe(curPattern().name)+".svg", new Blob([svg],{type:"image/svg+xml"}));
 });
 
 document.getElementById("addFloor").addEventListener("click", ()=>{
@@ -2027,9 +2407,7 @@ function download(name, blob){
   setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();}, 500);
 }
 document.getElementById("saveBtn").addEventListener("click", ()=>{
-  const data = {title:document.getElementById("mapTitle").textContent.trim(),
-                view:{angle:viewAngle, tilt:viewTilt, shade:shadeAmt, shadow:shadowAmt}, floors};
-  download("isometric-map.json", new Blob([JSON.stringify(data,null,1)],{type:"application/json"}));
+  download("isometric-map.json", new Blob([JSON.stringify(currentData(),null,1)],{type:"application/json"}));
 });
 document.getElementById("loadBtn").addEventListener("click", ()=>document.getElementById("fileInput").click());
 document.getElementById("fileInput").addEventListener("change", e=>{
@@ -2049,6 +2427,21 @@ document.getElementById("fileInput").addEventListener("change", e=>{
 function applyLoadedData(data){
   floors = data.floors || [];
   floors.forEach(f=>{ f.id = uid++; f.cells = f.cells||{}; f.labels = f.labels||[]; f.stamps = f.stamps||[]; f.walls = f.walls||[]; f.zones = f.zones||[]; });
+  // 積層パターン: 保存時のフロアindexを振り直したidへ引き当てる
+  if(data.stack && Array.isArray(data.stack.patterns) && data.stack.patterns.length){
+    stackPatterns = data.stack.patterns.map((p,i)=>({
+      name: p.name || "パターン " + (i+1),
+      hidden: new Set((p.hidden||[]).map(ix=>floors[ix] && floors[ix].id).filter(id=>id!=null)),
+      here: (p.here && floors[p.here.f]) ? {fid:floors[p.here.f].id, c:p.here.c, r:p.here.r} : null,
+      legendPos: p.legendPos || "tl"
+    }));
+    activePattern = Math.min(Math.max(0, data.stack.active|0), stackPatterns.length-1);
+  }else{
+    stackPatterns = [newPattern("パターン 1")];
+    activePattern = 0;
+  }
+  if(data.b2) b2Opts = Object.assign({}, b2Opts, data.b2);
+  placingHere = false;
   if(data.title) document.getElementById("mapTitle").textContent = data.title;
   if(data.view){
     angleRange.value = data.view.angle ?? 45;
@@ -2085,13 +2478,26 @@ async function persistWipe(){
 }
 function setSaveStatus(t){ const el = document.getElementById("saveStatus"); if(el) el.textContent = t; }
 
-function currentDataJSON(){
-  return JSON.stringify({
+function currentData(){
+  // パターンはフロアidではなく並び順indexで保存する(読み込み時にidが振り直されるため)
+  const fi = id => floors.findIndex(f=>f.id===id);
+  return {
     title: document.getElementById("mapTitle").textContent.trim(),
     view: {angle:viewAngle, tilt:viewTilt, shade:shadeAmt, shadow:shadowAmt},
-    floors
-  });
+    floors,
+    stack: {
+      active: activePattern,
+      patterns: stackPatterns.map(p=>({
+        name: p.name,
+        hidden: [...p.hidden].map(fi).filter(i=>i>=0),
+        here: (p.here && fi(p.here.fid)>=0) ? {f:fi(p.here.fid), c:p.here.c, r:p.here.r} : null,
+        legendPos: p.legendPos || "tl"
+      }))
+    },
+    b2: b2Opts
+  };
 }
+function currentDataJSON(){ return JSON.stringify(currentData()); }
 function b64urlFromBytes(u8){
   let bin = "";
   for(let i=0;i<u8.length;i+=0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i,i+0x8000));
@@ -2324,7 +2730,9 @@ document.getElementById("mapTitle").addEventListener("input", autosave);
     }
     clearTimeout(armTimer); armed = false; wipeBtn.textContent = "初期化";
     persistWipe().then(()=>{
-      undoStack = []; sample(); buildFloorsDOM();
+      undoStack = [];
+      stackPatterns = [newPattern("パターン 1")]; activePattern = 0; placingHere = false;
+      sample(); buildFloorsDOM();
       setSaveStatus("初期化しました");
     });
   });
