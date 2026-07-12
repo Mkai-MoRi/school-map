@@ -491,6 +491,10 @@ function stampSVG(type, x, y){
       + `<line x1="${x}" y1="${y}" x2="${x}" y2="${y-9}" stroke="${CM}" stroke-width="1.8"/>`
       + `<circle cx="${x}" cy="${y-16}" r="7.5" fill="${RD}" stroke="${CM}" stroke-width="1.6"/>`
       + `<rect x="${x-4.6}" y="${y-17.4}" width="9.2" height="2.8" rx="1.4" fill="${CM}"/></g>`;
+    case "here": return `<g>`
+      + `<ellipse cx="${x}" cy="${y}" rx="9" ry="3.6" fill="${SH}" opacity="0.4"/>`
+      + `<path d="M ${x},${y} C ${x-2.5},${y-7} ${x-9.5},${y-11} ${x-9.5},${y-20} A 9.5 9.5 0 1 1 ${x+9.5},${y-20} C ${x+9.5},${y-11} ${x+2.5},${y-7} ${x},${y} Z" fill="${GD}" stroke="${SH}" stroke-width="2.6" stroke-linejoin="round"/>`
+      + `<circle cx="${x}" cy="${y-20}" r="3.6" fill="${SH}"/></g>`;
     case "wcmale": return `<g>`
       + `<ellipse cx="${x}" cy="${y}" rx="8" ry="3" fill="${SH}" opacity="0.32"/>`
       + `<line x1="${x}" y1="${y}" x2="${x}" y2="${y-12}" stroke="${SH}" stroke-width="4.4" stroke-linecap="round"/>`
@@ -822,7 +826,8 @@ function renderFloorSVG(f){
       // Dashed outline
       out += `<polygon points="${pts}" fill="none" stroke="${color}" stroke-width="2.4" `
            + `stroke-dasharray="9 5" stroke-linejoin="round" opacity="0.72" pointer-events="none"/>`;
-      // Badge at topmost corner
+      // Badge at topmost corner (suppressed in stacked view — one big badge per building instead)
+      if(renderingStack) continue;
       const topPt = [A,B,C,D].reduce((a,b)=>a[1]<=b[1]?a:b);
       const bx = topPt[0], by = topPt[1] - 14;
       const bw = Math.max(44, [...label].reduce((a,ch)=>a+(ch.charCodeAt(0)>255?11:6.5),0)+18);
@@ -1121,8 +1126,13 @@ function attachPointer(f){
     else if(currentTool==="stamp"){
       f.stamps = f.stamps || [];
       const i = f.stamps.findIndex(s=>s.c===cell.c && s.r===cell.r);
-      if(i>=0 && f.stamps[i].type===stampType) f.stamps.splice(i,1);   // same type -> remove
-      else if(i>=0) f.stamps[i].type = stampType;
+      const toggleOff = i>=0 && f.stamps[i].type===stampType;   // same type -> remove
+      // 現在地はマップ全体で1つだけ: 置き直すと既存の現在地は全フロアから消える
+      if(stampType==="here")
+        floors.forEach(fl=>{ fl.stamps = (fl.stamps||[]).filter(s=>s.type!=="here"); });
+      const j = f.stamps.findIndex(s=>s.c===cell.c && s.r===cell.r);
+      if(toggleOff){ if(j>=0) f.stamps.splice(j,1); }
+      else if(j>=0) f.stamps[j].type = stampType;
       else f.stamps.push({c:cell.c, r:cell.r, type:stampType});
     }
     else if(currentTool==="erase"){
@@ -1530,6 +1540,36 @@ function buildStackedContent(opts){
 
   let body = "";
 
+  // Building groups: zones sharing a label across floors form one building
+  // (e.g. 本館 / 新館). Vertical corner guides run through the whole stack
+  // behind the plates, and one big badge sits above the top floor.
+  const bldgs = new Map();
+  visible.forEach((f, i) => {
+    (f.zones||[]).forEach(z => {
+      if(!bldgs.has(z.label))
+        bldgs.set(z.label, {label:z.label, color:z.color, c0:z.c0, r0:z.r0, c1:z.c1, r1:z.r1, iMin:i, iMax:i});
+      const b = bldgs.get(z.label);
+      b.c0 = Math.min(b.c0, z.c0); b.r0 = Math.min(b.r0, z.r0);
+      b.c1 = Math.max(b.c1, z.c1); b.r1 = Math.max(b.r1, z.r1);
+      b.iMin = Math.min(b.iMin, i); b.iMax = Math.max(b.iMax, i);
+    });
+  });
+  let bldgLabels = "";
+  for(const b of bldgs.values()){
+    const corners = [[b.c0,b.r0],[b.c1+1,b.r0],[b.c1+1,b.r1+1],[b.c0,b.r1+1]];
+    const yTop = b.iMin*gap, yBot = b.iMax*gap;
+    for(const [cc,rr] of corners)
+      body += `<line x1="${px(cc,rr).toFixed(1)}" y1="${(yTop+py(cc,rr)-42).toFixed(1)}" `
+            + `x2="${px(cc,rr).toFixed(1)}" y2="${(yBot+py(cc,rr)+8).toFixed(1)}" `
+            + `stroke="${b.color}" stroke-width="1.6" stroke-dasharray="2.5 5" stroke-linecap="round" opacity="0.45"/>`;
+    const bx = px((b.c0+b.c1+1)/2, (b.r0+b.r1+1)/2);
+    const by = yTop + Math.min(...corners.map(([cc,rr])=>py(cc,rr))) - 56;
+    const bw = Math.max(64, [...b.label].reduce((a,ch)=>a+(ch.charCodeAt(0)>255?15:8.5),0)+26);
+    bldgLabels += `<line x1="${bx.toFixed(1)}" y1="${(by+12).toFixed(1)}" x2="${bx.toFixed(1)}" y2="${(by+44).toFixed(1)}" stroke="${b.color}" stroke-width="1.6" stroke-dasharray="2.5 4" opacity="0.75"/>`
+      + `<rect x="${(bx-bw/2).toFixed(1)}" y="${(by-14).toFixed(1)}" width="${bw.toFixed(1)}" height="27" rx="13.5" fill="${b.color}" stroke="#191735" stroke-width="1.6" opacity="0.96"/>`
+      + `<text x="${bx.toFixed(1)}" y="${(by+5.5).toFixed(1)}" font-family="Helvetica,Arial,sans-serif" font-size="14.5" font-weight="900" fill="#F3ECCF" text-anchor="middle" letter-spacing="0.08em">${esc(b.label)}</text>`;
+  }
+
   // Staircase dotted connectors between adjacent visible floors.
   // Stairs on the near half of the map draw on top of the plates as before;
   // stairs that rotate to the far half slot in behind the upper plate so the
@@ -1605,10 +1645,34 @@ function buildStackedContent(opts){
     const ly = yOff + VM.oy;
     labels += `<text x="${lx}" y="${ly+4}" font-family="Helvetica,Arial,sans-serif" font-size="22" font-weight="900" fill="#E96A80" opacity="0.95">${esc(f.num)}</text>`;
     labels += `<text x="${lx}" y="${ly+20}" font-family="Helvetica,Arial,sans-serif" font-size="9" font-weight="700" fill="#A9A7D6" letter-spacing="0.08em">${esc(f.title.slice(0,10).toUpperCase())}</text>`;
+    if((f.stamps||[]).some(s=>s.type==="here")){
+      labels += `<rect x="${lx-4}" y="${ly+28}" width="60" height="17" rx="8.5" fill="#E9B45B"/>`;
+      labels += `<text x="${lx+26}" y="${ly+40.5}" font-family="Helvetica,Arial,sans-serif" font-size="10" font-weight="900" fill="#23214A" text-anchor="middle" letter-spacing="0.06em">▶ 現在地</text>`;
+    }
   }
 
-  // Near-side connectors and labels on top of all floors
-  body += frontConn + labels;
+  // Near-side connectors, labels and building badges on top of all floors
+  body += frontConn + labels + bldgLabels;
+
+  // 現在地 highlight: pulsing ground rings + callout tag above the pin
+  for(let i=0;i<n;i++){
+    const f = visible[i];
+    const here = (f.stamps||[]).find(s=>s.type==="here");
+    if(!here) continue;
+    const c0 = f.cells[key(here.c,here.r)];
+    const tz = c0 ? (H_OF[c0.kind]||0) : 0;
+    const hx = px(here.c+0.5, here.r+0.5);
+    const hy = i*gap + py(here.c+0.5, here.r+0.5) - tz;
+    body += `<ellipse cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" rx="9" ry="3.6" fill="none" stroke="#E9B45B" stroke-width="1.6" opacity="0.6"/>`
+          + `<ellipse cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" rx="9" ry="3.6" fill="none" stroke="#E9B45B" stroke-width="2">`
+          + `<animate attributeName="rx" values="9;22" dur="1.6s" repeatCount="indefinite"/>`
+          + `<animate attributeName="ry" values="3.6;8.8" dur="1.6s" repeatCount="indefinite"/>`
+          + `<animate attributeName="opacity" values="0.85;0" dur="1.6s" repeatCount="indefinite"/></ellipse>`;
+    const tagW = 66, tagH = 21, tx = hx - tagW/2, ty = hy - 72;
+    body += `<line x1="${hx.toFixed(1)}" y1="${(hy-32).toFixed(1)}" x2="${hx.toFixed(1)}" y2="${ty+tagH}" stroke="#E9B45B" stroke-width="1.6" stroke-dasharray="3 2.5" opacity="0.9"/>`
+          + `<rect x="${tx.toFixed(1)}" y="${ty}" width="${tagW}" height="${tagH}" rx="10.5" fill="#E9B45B" stroke="#191735" stroke-width="1.8"/>`
+          + `<text x="${hx.toFixed(1)}" y="${ty+15}" font-family="Helvetica,Arial,sans-serif" font-size="11.5" font-weight="900" fill="#23214A" text-anchor="middle" letter-spacing="0.1em">現在地</text>`;
+  }
 
   showGrid = savedGrid;
   shadowAmt = savedShadow;
@@ -1837,6 +1901,11 @@ function buildB2PosterSVG(){
     s += `<rect x="${labelX + 2}" y="${(lyC + 10).toFixed(1)}" width="30" height="2.6" rx="1.3" fill="${CORAL}" opacity="0.55"/>`;
     if(f.title)
       s += `<text x="${labelX + 2}" y="${(lyC + 30).toFixed(1)}" font-family="${FONT}" font-size="11" font-weight="800" fill="${CREAM}" opacity="0.92">${esc(f.title.slice(0, 9))}</text>`;
+    if((f.stamps||[]).some(st=>st.type==="here")){
+      const by = lyC + (f.title ? 38 : 16);
+      s += `<rect x="${labelX + 2}" y="${by.toFixed(1)}" width="62" height="18" rx="9" fill="#E9B45B"/>`;
+      s += `<text x="${labelX + 33}" y="${(by + 13).toFixed(1)}" font-family="${FONT}" font-size="10" font-weight="900" fill="#23214A" text-anchor="middle" letter-spacing="0.08em">▶ 現在地</text>`;
+    }
   });
 
   // ── Footer note boxes ─────────────────────────────────
@@ -1962,7 +2031,7 @@ document.querySelectorAll("#heightGroup .mini").forEach(b=>{
 const STAMP_TYPES = [
   ["tree","木"], ["person","人"], ["arrow","矢印"], ["flag","旗"],
   ["cross","立入禁止 ×"], ["rope","ロープ"], ["noentry","通行止め"],
-  ["wcmale","男子トイレ"], ["wcfemale","女子トイレ"]
+  ["wcmale","男子トイレ"], ["wcfemale","女子トイレ"], ["here","現在地"]
 ];
 {
   const sg = document.getElementById("stampGroup");
