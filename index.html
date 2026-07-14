@@ -395,6 +395,9 @@
       <option value="bl">左下</option>
       <option value="br">右下</option>
     </select>
+    <span class="stack-floor-toggle-label" style="margin-left:8px">回転:</span>
+    <input type="range" id="patternAngleRange" min="0" max="360" step="1" value="45" aria-label="このパターンの回転角度" style="width:120px">
+    <span class="tb-val" id="patternAngleVal">45°</span>
   </div>
   <div class="stack-svg-wrap" id="stackSvgWrap"></div>
 </section>
@@ -472,8 +475,8 @@ let stackViewActive = false;
 let renderingStack = false;
 const STACK_GAP = 250;
 
-// 積層ビューのパターン: 表示フロア・現在地・アイコン凡例の位置をひと組で何通りでも保持
-function newPattern(name){ return {name, hidden:new Set(), here:null, legendPos:"tl"}; }
+// 積層ビューのパターン: 表示フロア・現在地・アイコン凡例・回転角度をひと組で何通りでも保持
+function newPattern(name, angle){ return {name, hidden:new Set(), here:null, legendPos:"tl", angle: angle!=null ? +angle : 45}; }
 let stackPatterns = [newPattern("パターン 1")];
 let activePattern = 0;
 let placingHere = false;   // 積層ビュー上で現在地を配置するモード
@@ -481,6 +484,25 @@ function curPattern(){
   if(!stackPatterns.length) stackPatterns.push(newPattern("パターン 1"));
   if(activePattern >= stackPatterns.length) activePattern = stackPatterns.length - 1;
   return stackPatterns[activePattern];
+}
+function syncPatternAngleUI(a){
+  const n = Math.max(0, Math.min(360, a|0));
+  const ar = document.getElementById("angleRange");
+  const av = document.getElementById("angleVal");
+  if(ar) ar.value = n;
+  if(av) av.textContent = n + "\u00b0";
+  const pa = document.getElementById("patternAngleRange");
+  const pv = document.getElementById("patternAngleVal");
+  if(pa) pa.value = n;
+  if(pv) pv.textContent = n + "\u00b0";
+  return n;
+}
+function applyPatternAngle(p, opts){
+  const n = syncPatternAngleUI(p && p.angle != null ? p.angle : 45);
+  if(p) p.angle = n;
+  viewAngle = n;
+  if(!opts || opts.redraw !== false) redrawAll();
+  else if(stackViewActive) updateStackView();
 }
 // 積層ビュー/B2で使う現在地: パターンの現在地が最優先、無ければフロアの現在地スタンプ
 function hereOf(f){
@@ -1813,8 +1835,10 @@ function updateStackView(){
   if(!wrap || !stackViewActive) return;
   updateStackPatternBar();
   updateStackFloorToggles();
+  const pat = curPattern();
   const sel = document.getElementById("legendPosSel");
-  if(sel) sel.value = curPattern().legendPos || "tl";
+  if(sel) sel.value = pat.legendPos || "tl";
+  syncPatternAngleUI(pat.angle != null ? pat.angle : viewAngle);
   const {body, w, h} = buildStackedContent();
   wrap.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" `
     + `style="width:100%;height:auto;display:block" role="img" aria-label="全フロア積層ビュー">${body}</svg>`;
@@ -1828,6 +1852,7 @@ function updateStackPatternBar(){
     const active = i === activePattern;
     const chip = document.createElement("span");
     chip.className = "pattern-chip" + (active ? " active" : "");
+    const ang = p.angle != null ? p.angle|0 : 45;
     if(active){
       // アクティブなパターンは名前をその場で編集できる
       const inp = document.createElement("input");
@@ -1835,11 +1860,19 @@ function updateStackPatternBar(){
       inp.setAttribute("aria-label", "パターン名");
       inp.addEventListener("input", ()=>{ p.name = inp.value; autosave(); });
       chip.appendChild(inp);
+      const angLbl = document.createElement("span");
+      angLbl.style.cssText = "opacity:.75;font-variant-numeric:tabular-nums";
+      angLbl.textContent = ang + "°";
+      chip.appendChild(angLbl);
     }else{
-      chip.textContent = p.name || "パターン " + (i+1);
+      chip.textContent = (p.name || "パターン " + (i+1)) + " · " + ang + "°";
       chip.setAttribute("role", "button");
-      chip.setAttribute("title", "クリックして切り替え");
-      chip.addEventListener("click", ()=>{ activePattern = i; placingHere = false; syncHerePlaceBtn(); updateStackView(); autosave(); });
+      chip.setAttribute("title", "クリックして切り替え（回転 " + ang + "°）");
+      chip.addEventListener("click", ()=>{
+        activePattern = i; placingHere = false; syncHerePlaceBtn();
+        applyPatternAngle(stackPatterns[i]);
+        autosave();
+      });
     }
     bar.appendChild(chip);
   });
@@ -1850,13 +1883,14 @@ function updateStackPatternBar(){
   addBtn.title = "現在のパターンを複製して追加";
   addBtn.addEventListener("click", ()=>{
     const src = curPattern();
-    const copy = newPattern("パターン " + (stackPatterns.length + 1));
+    const copy = newPattern("パターン " + (stackPatterns.length + 1), src.angle);
     copy.hidden = new Set(src.hidden);
     copy.here = src.here ? {...src.here} : null;
     copy.legendPos = src.legendPos;
     stackPatterns.push(copy);
     activePattern = stackPatterns.length - 1;
-    updateStackView(); autosave();
+    applyPatternAngle(copy);
+    autosave();
   });
   bar.appendChild(addBtn);
 
@@ -1870,7 +1904,8 @@ function updateStackPatternBar(){
       if(delBtn.dataset.armed){
         stackPatterns.splice(activePattern, 1);
         activePattern = Math.max(0, activePattern - 1);
-        updateStackView(); autosave();
+        applyPatternAngle(curPattern());
+        autosave();
       }else{
         delBtn.dataset.armed = "1";
         delBtn.textContent = "本当に削除?";
@@ -1971,7 +2006,7 @@ function toggleStackView(on){
   const btn = document.getElementById("stackViewBtn");
   if(btn) btn.setAttribute("aria-pressed", stackViewActive ? "true":"false");
   if(stackViewActive){
-    updateStackView();
+    applyPatternAngle(curPattern());
     document.getElementById("stack-view").scrollIntoView({behavior:"smooth", block:"start"});
   }
 }
@@ -2338,10 +2373,16 @@ function applyView(){
   viewTilt  = +tiltRange.value/100;
   document.getElementById("angleVal").textContent = viewAngle + "\u00b0";
   document.getElementById("tiltVal").textContent  = tiltRange.value + "%";
+  curPattern().angle = viewAngle;
+  syncPatternAngleUI(viewAngle);
   redrawAll();
 }
 angleRange.addEventListener("input", applyView);
 tiltRange.addEventListener("input", applyView);
+document.getElementById("patternAngleRange").addEventListener("input", ()=>{
+  angleRange.value = document.getElementById("patternAngleRange").value;
+  applyView();
+});
 document.getElementById("viewReset").addEventListener("click", ()=>{
   angleRange.value = 45; tiltRange.value = 50; applyView();
 });
@@ -2429,29 +2470,31 @@ function applyLoadedData(data){
   floors.forEach(f=>{ f.id = uid++; f.cells = f.cells||{}; f.labels = f.labels||[]; f.stamps = f.stamps||[]; f.walls = f.walls||[]; f.zones = f.zones||[]; });
   // 積層パターン: 保存時のフロアindexを振り直したidへ引き当てる
   if(data.stack && Array.isArray(data.stack.patterns) && data.stack.patterns.length){
+    const fallbackAngle = (data.view && data.view.angle != null) ? +data.view.angle : 45;
     stackPatterns = data.stack.patterns.map((p,i)=>({
       name: p.name || "パターン " + (i+1),
       hidden: new Set((p.hidden||[]).map(ix=>floors[ix] && floors[ix].id).filter(id=>id!=null)),
       here: (p.here && floors[p.here.f]) ? {fid:floors[p.here.f].id, c:p.here.c, r:p.here.r} : null,
-      legendPos: p.legendPos || "tl"
+      legendPos: p.legendPos || "tl",
+      angle: p.angle != null ? +p.angle : fallbackAngle
     }));
     activePattern = Math.min(Math.max(0, data.stack.active|0), stackPatterns.length-1);
   }else{
-    stackPatterns = [newPattern("パターン 1")];
+    stackPatterns = [newPattern("パターン 1", data.view && data.view.angle)];
     activePattern = 0;
   }
   if(data.b2) b2Opts = Object.assign({}, b2Opts, data.b2);
   placingHere = false;
   if(data.title) document.getElementById("mapTitle").textContent = data.title;
   if(data.view){
-    angleRange.value = data.view.angle ?? 45;
     tiltRange.value  = Math.round((data.view.tilt ?? 0.5)*100);
-    viewAngle = +angleRange.value; viewTilt = +tiltRange.value/100;
+    viewTilt = +tiltRange.value/100;
     if(data.view.shade  != null){ shadeRange.value  = data.view.shade;  shadeAmt  = +shadeRange.value; }
     if(data.view.shadow != null){ shadowRange.value = data.view.shadow; shadowAmt = +shadowRange.value; }
-    document.getElementById("angleVal").textContent = viewAngle + "\u00b0";
     document.getElementById("tiltVal").textContent  = tiltRange.value + "%";
   }
+  viewAngle = syncPatternAngleUI(curPattern().angle != null ? curPattern().angle : (data.view && data.view.angle) || 45);
+  curPattern().angle = viewAngle;
   buildFloorsDOM();
 }
 
@@ -2491,7 +2534,8 @@ function currentData(){
         name: p.name,
         hidden: [...p.hidden].map(fi).filter(i=>i>=0),
         here: (p.here && fi(p.here.fid)>=0) ? {f:fi(p.here.fid), c:p.here.c, r:p.here.r} : null,
-        legendPos: p.legendPos || "tl"
+        legendPos: p.legendPos || "tl",
+        angle: p.angle != null ? +p.angle : 45
       }))
     },
     b2: b2Opts
